@@ -1,10 +1,15 @@
 #include <string>
+#include <list>
 #include <vector>
-#include <utility>
-#include <iostream>
+#include <stack>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
+#include <iostream>
 #include <functional>
 #include <algorithm>
+#include <cstdint>
 
 int RL_CORNER_MAPPING(int x) {
 	if (x == 0) {
@@ -45,16 +50,70 @@ int FB_CORNER_MAPPING(int x) {
 	return -1;
 }
 
+struct StateHash {
+    size_t operator()(const std::pair<uint32_t, uint64_t>& p) const {
+        size_t h1 = std::hash<uint32_t>()(p.first);
+        size_t h2 = std::hash<uint64_t>()(p.second);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    }
+};
+
+uint64_t permRank(const std::vector<int>& perm) {
+    int n = perm.size();
+    std::vector<bool> used(n, false);
+    uint64_t rank = 0;
+    uint64_t fact = 1;
+    for (int i = n - 2; i >= 0; i--) fact *= (i + 1); // (n-1)!
+
+    for (int i = 0; i < n; i++) {
+        int smaller = 0;
+        for (int j = perm[i] - 1; j >= 0; j--) {
+            if (!used[j]) smaller++;
+        }
+        rank += smaller * fact;
+        used[perm[i]] = true;
+        if (i < n - 1) fact /= (n - 1 - i);
+    }
+    return rank;
+}
+
+// vector 1: 8 pairs, first value 0-2, second value unique 0-7, order matters
+uint32_t encodeVec1(const std::vector<std::pair<int,int>>& v) {
+    std::vector<int> order(8);
+    int arr[8];
+    for (int i = 0; i < 8; i++) {
+        order[i] = v[i].second;   // sequence of labels
+        arr[v[i].second] = v[i].first;
+    }
+    uint32_t permPart = (uint32_t)permRank(order);   // 0 to 40319
+    uint32_t valuePart = 0;
+    for (int i = 0; i < 8; i++) valuePart = valuePart * 3 + arr[i]; // 0 to 6560
+
+    return permPart * 6561 + valuePart;
+}
+
+// vector 2: 12 pairs, first value 0-1, second value unique 0-11, order matters
+uint64_t encodeVec2(const std::vector<std::pair<int,int>>& v) {
+    std::vector<int> order(12);
+    uint32_t bitmask = 0;
+    for (int i = 0; i < 12; i++) {
+        order[i] = v[i].second;
+        if (v[i].first == 1) bitmask |= (1u << v[i].second);
+    }
+    uint64_t permPart = permRank(order);   // 0 to 479001599
+    uint64_t valuePart = bitmask;          // 0 to 4095
+
+    return permPart * 4096ull + valuePart;
+}
+
 
 class Cube {
 private:
 	// Corner Encoding: Where the W/Y side is facing. TB = 0, FB = 1, RL = 2.
-	// Edge Encoding: If the higher in the colour hierachy is the higher value in the face hierarchy then 0 else 1
+	// Edge Encoding: If the higher in the colour hierarchy is the higher value in the face hierarchy then 0 else 1
+	// Hierarchy: WY/GB/RO TB/FB/RL
 	std::vector<std::pair<int,int>> CORNERS_SOLVED;
 	std::vector<std::pair<int,int>> EDGES_SOLVED;
-
-	std::vector<std::pair<int,int>> corners;
-	std::vector<std::pair<int,int>> edges;
 
 	std::vector<int> R_CORNER_CYCLE {2, 1, 5, 6};
 	std::vector<int> L_CORNER_CYCLE {0, 3, 7, 4};
@@ -71,7 +130,7 @@ private:
 	std::vector<int> B_EDGE_CYCLE {0, 4, 8, 5};
 
 	// Starts at the topmost edge on the side (before the turn) and goes clockwise around to each edge. 1 means its orientation changes.
-	std::vector<int> RL_EDGE_ROTATION {0, 1, 0, 1};
+	std::vector<int> RL_EDGE_ROTATION {0, 0, 0, 0};
 	std::vector<int> UD_EDGE_ROTATION {0, 0, 0, 0};
 	std::vector<int> FB_EDGE_ROTATION {1, 1, 1, 1};
 
@@ -81,11 +140,13 @@ private:
 								 {'D', D_EDGE_CYCLE}, {'F', F_EDGE_CYCLE}, {'B', B_EDGE_CYCLE}};
 	std::unordered_map<char,std::function<int(int)>> corner_rotations = {{'R', RL_CORNER_MAPPING}, {'L', RL_CORNER_MAPPING}, {'U', UD_CORNER_MAPPING},
 								 {'D', UD_CORNER_MAPPING}, {'F', FB_CORNER_MAPPING}, {'B', FB_CORNER_MAPPING}};
-	// Hierarchy: WY/GB/RO TB/FB/RL
 	std::unordered_map<char,std::vector<int>> edge_rotations = {{'R', RL_EDGE_ROTATION}, {'L', RL_EDGE_ROTATION}, {'U', UD_EDGE_ROTATION},
 								 {'D', UD_EDGE_ROTATION}, {'F', FB_EDGE_ROTATION}, {'B', FB_EDGE_ROTATION}};
 
 public:
+	std::vector<std::pair<int,int>> corners;
+	std::vector<std::pair<int,int>> edges;
+
 	Cube() {
 		for (int i = 0; i < 8; i++) {
 			CORNERS_SOLVED.push_back(std::pair<int,int>{0, i});
@@ -96,6 +157,21 @@ public:
 
 		corners = CORNERS_SOLVED;
 		edges = EDGES_SOLVED;
+	}
+	
+
+
+	void set_state(std::vector<std::pair<int,int>> new_corners, std::vector<std::pair<int,int>> new_edges) {
+		corners = new_corners;
+		edges = new_edges;
+	}
+
+	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> get_state() {
+		return std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>>{corners, edges};
+	}
+
+	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> get_solved_state() {
+		return std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>>{CORNERS_SOLVED, EDGES_SOLVED};
 	}
 
 	void move(std::string mv) {
@@ -111,7 +187,7 @@ public:
 		}
 	}
 
-	void cycle(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges, std::vector<int> corner_cycle,
+	void cycle(std::vector<std::pair<int,int>>& corners, std::vector<std::pair<int,int>>& edges, std::vector<int> corner_cycle,
 		       std::vector<int> edge_cycle, std::function<int(int)> corner_rotation,
 		       std::vector<int> edge_rotation, int direction) {
 		// corners: Holds pairs corresponding to the rotation and corner number in each of the 7 corner positions in order from 0 to 7
@@ -127,6 +203,7 @@ public:
 		// direction: Either 1, -1, 2 depending on whether you are doing an R, R', or R2 for example. 
 		// Adjustments to the corner and edge cycle should be made (or they should be performed multiple times) if R2 for example
 
+
 		if (direction != -1 && direction != 1) {
 			std::cout << "Invalid direction given: " << direction << "\n";
 		}
@@ -139,14 +216,6 @@ public:
 		        std::vector<int> rev_edge_cycle(edge_cycle);
 			std::reverse(rev_edge_cycle.begin(), rev_edge_cycle.end());
 			edge_cycle = rev_edge_cycle;
-
-		        std::function<int(int)> rev_corner_rotation(corner_rotation);
-			std::reverse(rev_corner_rotation.begin(), rev_corner_rotation.end());
-			corner_rotation = rev_corner_rotation;
-
-		        std::vector<int> rev_edge_rotation(edge_rotation);					
-			std::reverse(rev_edge_rotation.begin(), rev_edge_rotation.end());
-			edge_rotation = rev_edge_rotation;
 		}
 
 		// ATP whether the direction was -1 or 1 the variables have been updated so that the below code should cycle correctly, theoretically
@@ -163,21 +232,20 @@ public:
 		// Update corner and edge rotation
 		for (int i = 0; i < affected_pieces; i++) {
 			int next_corner_pos = corner_cycle[(i + 1) % affected_pieces];
-			std::function<int(int)> rot = corner_rotation[i];
 
 			int next_edge_pos = edge_cycle[(i + 1) % affected_pieces];
 			int edge_rot = edge_rotation[i];
 
 			// Get corner and copy the next before replacing it
 			std::pair<int,int> curr_corner = next_corner;
-			next_corner(corners[next_corner_pos]);
+			next_corner = corners[next_corner_pos];
 
 			// Get edge and copy the next before replacing it
 			std::pair<int,int> curr_edge = next_edge;
-			next_edge(edges[next_edge_pos]);
+			next_edge = edges[next_edge_pos];
 
 			// Rotate FIRST then Move
-			curr_corner.first = rot(curr_corner.first);
+			curr_corner.first = corner_rotation(curr_corner.first);
 			corners[next_corner_pos] = curr_corner;
 
 			// On each move edge_rot is either 0 or 1 corresponding to whether the EO was flipped
@@ -219,25 +287,238 @@ public:
 	}
 
 	void display() {
-		for (int i = 0; i < 7; i++) {
+		std::cout << "\nCorners: \n";
+		for (int i = 0; i < 8; i++) {
 			std::pair<int,int> p = get_piece_at(1, i);
 			std::cout << p.first << " | " << p.second << "\n";
 		}
 
-		for (int i = 0; i < 11; i++) {
+		std::cout << "\nEdges: \n";
+		for (int i = 0; i < 12; i++) {
 			std::pair<int,int> p = get_piece_at(0, i);
 			std::cout << p.first << " | " << p.second << "\n";
 		}
 	}
 };
 
+class Solver {
+private:
+	// Valid Moves after 
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2", "R'"};
+	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
+
+	int DEPTH_PHASE_1 = 5;
+	int DEPTH_PHASE_2 = 12;
+	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
+
+	std::stack<int> depths;
+	std::stack<std::list<std::string>> moves;
+	std::stack<std::vector<std::pair<int,int>>> corner_states;
+	std::stack<std::vector<std::pair<int,int>>> edge_states;
+	std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+
+	std::pair<std::list<std::string>,std::list<std::string>> solution;
+	Cube cube;
+
+public:
+	Solver(Cube cube) {
+		cube = cube;
+
+		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> state = cube.get_state();
+		std::vector<std::pair<int,int>> corner_state = state.first;
+		std::vector<std::pair<int,int>> edge_state = state.second;
+
+		depths.push(0);
+		moves.push(std::list<std::string>{});
+		corner_states.push(corner_state);
+		edge_states.push(edge_state);
+	}
+
+	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
+		return solution;
+	}
+
+	std::pair<uint32_t,uint64_t> hash(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges) {
+		uint32_t v1code = encodeVec1(corners);
+		uint64_t v2code = encodeVec2(edges);
+		return std::make_pair(v1code, v2code); 
+	}
+
+	void dfs() {
+		int i = 0;
+		std::vector<std::string> move_space = MOVES;
+		int search_depth = DEPTH_PHASE_1;
+		while (depths.size() > 0) {
+			i++;
+			if (i % 100000 == 0) {
+				std::cout << i << "\n";
+			}
+
+			// Get next node to visit
+			int depth = depths.top();
+
+			std::list<std::string> state_moves(moves.top());
+
+			std::vector<std::pair<int,int>> corners(corner_states.top());
+			std::vector<std::pair<int,int>> edges(edge_states.top());
+
+			depths.pop();
+			moves.pop();
+			corner_states.pop();
+			edge_states.pop();
+
+			// Hash and store visited state
+			visited.insert(hash(corners, edges));
+			
+			// Check for target state
+			int phase_complete = check_state(corners, edges, i);
+
+			if (phase_complete == 2) {
+				std::cout << "HERE";
+				// Solved state has been found
+				solution.second = state_moves;
+				std::cout << "Number of iterations (total): " << i << "\n";
+				return;
+			}
+
+			// Domino reduced state has been found for the first time
+			if (phase_complete == 1 and SOLVER_PHASE == 0) {
+				SOLVER_PHASE++;
+				move_space = DOMINO_MOVES;
+				search_depth = DEPTH_PHASE_2;
+				std::cout << "Number of iterations (first): " << i << "\n";
+
+				std::cout << "Domino reduction complete with: ";
+				for (std::string s : state_moves) {
+					std::cout << s << ", ";
+				}
+				std::cout << "\n";
+
+				// Save moves to get to that state
+				solution.first = state_moves;
+				state_moves.clear();
+
+				// Clear all stacks
+				std::stack<int> empty_depths;
+				std::swap(depths, empty_depths);
+				
+					
+				std::stack<std::list<std::string>> empty_moves;
+				std::swap(moves, empty_moves);
+
+				std::stack<std::vector<std::pair<int,int>>> empty_corners;
+				std::swap(corner_states, empty_corners);
+
+				std::stack<std::vector<std::pair<int,int>>> empty_edges;
+				std::swap(edge_states, empty_edges);
+
+				visited.clear();
+
+				// Setup next phase of search to start from domino reduced state
+				depths.push(0);
+				moves.push(std::list<std::string>{});
+				corner_states.push(corners);
+				edge_states.push(edges);
+				continue;
+			}
+
+			// Search child nodes
+			for (std::string move : move_space) {
+				std::list<std::string> next_state_moves = state_moves;
+				if (depth + 1 <= search_depth) {
+					// Do the move
+					cube.set_state(corners, edges);
+					cube.move(move);
+					std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+						
+					// Store if we haven't been in the state before
+					if (!visited.count(hash(p.first, p.second))) {
+						depths.push(depth + 1);
+						next_state_moves.push_back(move);
+						moves.push(next_state_moves);
+
+
+						// Store new corner/edge states
+						corner_states.push(p.first);
+						edge_states.push(p.second);
+					} else {
+						// std::cout << "Found alr visited state\n";
+					}
+
+				}
+			}
+		}
+	}
+
+	int check_state(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges, int i) {
+		// Checks if the current goal has been reached in the given position
+		// Goal is determined by SOLVER_PHASE
+
+
+		if (i < 5) {
+			cube.set_state(corners, edges);
+			// cube.display();
+		}
+		
+		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> cube_state = cube.get_solved_state();
+		std::vector<std::pair<int,int>> CORNERS_SOLVED = cube_state.first;
+		std::vector<std::pair<int,int>> EDGES_SOLVED = cube_state.second;
+
+
+		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
+			std::cout << 2 << "\n";
+			return 2;
+		}
+
+		if (SOLVER_PHASE == 0) {
+			for (int i = 0; i < corners.size(); i++) {
+				if (corners.at(i).first) {
+					return 0;
+				}
+			} 
+
+			for (int i = 0; i < edges.size(); i++) {
+				if (edges.at(i).first) {
+					return 0;
+				}
+			} 
+
+			return 1;
+		}
+
+		return 0;
+	}
+};
 
 int main(int argc, char** argv) {
-	Cube cube;
-	cube.execute_moves(std::vector<std::string>{"R", "U", "R'", "U'", "R'", "F", "R2", "U'", "R'", "U'", "R", "U", "R'", "F'"});
-	cube.display();
-	cube.execute_moves(std::vector<std::string>{"R", "U", "R'", "U'", "R'", "F", "R2", "U'", "R'", "U'", "R", "U", "R'", "F'"});
-	cube.display();
+	Cube cube = Cube();
+	// std::vector<std::string> scramble = {"R", "U", "F", "R2", "B'", "D2"};
+	std::vector<std::string> scramble = {"U", "F", "R2", "B'", "D2"};
+	cube.execute_moves(scramble);
+	Solver solver = Solver(cube);
+	solver.dfs();
+
+	std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+	if (!solution.second.size()) {
+		std::cout << "No solution could be found with the current depth\n";
+	} else {
+		std::cout << "First\n";
+		for (std::string move : solution.first) {
+			std::cout << move << ", ";
+		}
+		std::cout << "Second\n";
+		for (std::string move : solution.second) {
+			std::cout << move << ", ";
+		}
+		std::cout << "Done\n";
+		std::cout << "Solution complete with: ";
+		solution.first.splice(solution.first.end(), solution.second);
+		for (std::string move : solution.first) {
+			std::cout << move << ", ";
+		}
+		std::cout <<"\n";
+	}
+
 	
 	return 0;
 }
