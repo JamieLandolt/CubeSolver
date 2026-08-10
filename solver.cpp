@@ -7,9 +7,14 @@
 #include <utility>
 
 #include <iostream>
+#include <fstream>
+
 #include <functional>
 #include <algorithm>
 #include <cstdint>
+#include <chrono>
+
+#include <random>
 
 int RL_CORNER_MAPPING(int x) {
 	if (x == 0) {
@@ -49,6 +54,7 @@ int FB_CORNER_MAPPING(int x) {
 	}
 	return -1;
 }
+
 
 struct StateHash {
     size_t operator()(const std::pair<uint32_t, uint64_t>& p) const {
@@ -142,6 +148,12 @@ private:
 								 {'D', UD_CORNER_MAPPING}, {'F', FB_CORNER_MAPPING}, {'B', FB_CORNER_MAPPING}};
 	std::unordered_map<char,std::vector<int>> edge_rotations = {{'R', RL_EDGE_ROTATION}, {'L', RL_EDGE_ROTATION}, {'U', UD_EDGE_ROTATION},
 								 {'D', UD_EDGE_ROTATION}, {'F', FB_EDGE_ROTATION}, {'B', FB_EDGE_ROTATION}};
+	std::vector<std::string> scramble_moves;
+
+	std::mt19937 gen;
+	std::uniform_int_distribution<> dist;
+
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 
 public:
 	std::vector<std::pair<int,int>> corners;
@@ -154,24 +166,38 @@ public:
 		for (int i = 0; i < 12; i++) {
 			EDGES_SOLVED.push_back(std::pair<int,int>{0, i});
 		}
-
 		corners = CORNERS_SOLVED;
 		edges = EDGES_SOLVED;
-	}
-	
+		
 
+		std::random_device rd;
+		gen = std::mt19937(rd());
+		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
+	}
+	std::vector<std::string> scramble(int scramble_size) {
+		scramble_moves.clear();
+		for (int i = 0; i < scramble_size; i++) {
+			scramble_moves.push_back(MOVES[dist(gen)]);
+		}
+		execute_moves(scramble_moves);
+		return scramble_moves;
+	}
 
 	void set_state(std::vector<std::pair<int,int>> new_corners, std::vector<std::pair<int,int>> new_edges) {
 		corners = new_corners;
 		edges = new_edges;
 	}
 
-	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> get_state() {
-		return std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>>{corners, edges};
+	void reset() {
+		set_state(CORNERS_SOLVED, EDGES_SOLVED);
+	}
+
+	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> get_state() {
+		return {corners, edges};
 	}
 
 	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> get_solved_state() {
-		return std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>>{CORNERS_SOLVED, EDGES_SOLVED};
+		return {CORNERS_SOLVED, EDGES_SOLVED};
 	}
 
 	void move(std::string mv) {
@@ -304,11 +330,11 @@ public:
 class Solver {
 private:
 	// Valid Moves after 
-	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2", "R'"};
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
 	int DEPTH_PHASE_1 = 5;
-	int DEPTH_PHASE_2 = 12;
+	int DEPTH_PHASE_2 = 10;
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
 	std::stack<int> depths;
@@ -318,21 +344,14 @@ private:
 	std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
 
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
-	Cube cube;
+	Cube& cube;
 
+	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> state;
+	std::vector<std::pair<int,int>>& corner_state;
+	std::vector<std::pair<int,int>>& edge_state;
+	
 public:
-	Solver(Cube cube) {
-		cube = cube;
-
-		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> state = cube.get_state();
-		std::vector<std::pair<int,int>> corner_state = state.first;
-		std::vector<std::pair<int,int>> edge_state = state.second;
-
-		depths.push(0);
-		moves.push(std::list<std::string>{});
-		corner_states.push(corner_state);
-		edge_states.push(edge_state);
-	}
+	Solver(Cube& external_cube) : cube(external_cube), corner_state(state.first), edge_state(state.second), state(cube.get_state()) {}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
 		return solution;
@@ -344,7 +363,47 @@ public:
 		return std::make_pair(v1code, v2code); 
 	}
 
+	void set_depth(int type, int depth) {
+		if (type == 1) {
+			DEPTH_PHASE_1 = depth;
+		} else {
+			DEPTH_PHASE_2 = depth;
+		}
+	}
+
+	void reset() {
+		// Clear all stacks
+		std::stack<int> empty_depths;
+		std::swap(depths, empty_depths);
+			
+		std::stack<std::list<std::string>> empty_moves;
+		std::swap(moves, empty_moves);
+
+		std::stack<std::vector<std::pair<int,int>>> empty_corners;
+		std::swap(corner_states, empty_corners);
+
+		std::stack<std::vector<std::pair<int,int>>> empty_edges;
+		std::swap(edge_states, empty_edges);
+
+		visited.clear();
+
+		SOLVER_PHASE = 0;
+		
+		solution = {};
+
+		auto state = cube.get_state();
+		depths.push(0);
+		moves.push(std::list<std::string>{});
+		corner_states.push(state.first);
+		edge_states.push(state.second);
+	}
+
 	void dfs() {
+		depths.push(0);
+		moves.push(std::list<std::string>{});
+		corner_states.push(corner_state);
+		edge_states.push(edge_state);
+
 		int i = 0;
 		std::vector<std::string> move_space = MOVES;
 		int search_depth = DEPTH_PHASE_1;
@@ -359,8 +418,8 @@ public:
 
 			std::list<std::string> state_moves(moves.top());
 
-			std::vector<std::pair<int,int>> corners(corner_states.top());
-			std::vector<std::pair<int,int>> edges(edge_states.top());
+			std::vector<std::pair<int,int>> corners = corner_states.top();
+			std::vector<std::pair<int,int>> edges = edge_states.top();
 
 			depths.pop();
 			moves.pop();
@@ -374,7 +433,6 @@ public:
 			int phase_complete = check_state(corners, edges, i);
 
 			if (phase_complete == 2) {
-				std::cout << "HERE";
 				// Solved state has been found
 				solution.second = state_moves;
 				std::cout << "Number of iterations (total): " << i << "\n";
@@ -454,19 +512,12 @@ public:
 		// Checks if the current goal has been reached in the given position
 		// Goal is determined by SOLVER_PHASE
 
-
-		if (i < 5) {
-			cube.set_state(corners, edges);
-			// cube.display();
-		}
-		
 		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> cube_state = cube.get_solved_state();
 		std::vector<std::pair<int,int>> CORNERS_SOLVED = cube_state.first;
 		std::vector<std::pair<int,int>> EDGES_SOLVED = cube_state.second;
 
 
 		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
-			std::cout << 2 << "\n";
 			return 2;
 		}
 
@@ -490,10 +541,86 @@ public:
 	}
 };
 
-int main(int argc, char** argv) {
+class Timer {
+private:
+	std::chrono::high_resolution_clock::time_point start_time;
+public:
+	void start() {
+		start_time = std::chrono::high_resolution_clock::now();
+	}
+
+	auto stop() {
+		return std::chrono::high_resolution_clock::now() - start_time;
+	}
+};
+
+void benchmark_solves() {
+	Timer timer = Timer();
+	// Setup Output File
+	std::ofstream file("benchmarks.txt");
+
+	if (!file) {
+		std::cerr << "Failed to open file\n";
+	}
+
+	Cube cube;
+	Solver solver = Solver(cube);
+	for (int scramble_size = 2; scramble_size < 15; scramble_size++) {
+		file << "Scrambles of size " << scramble_size << ":\n";
+		std::cout << "Scrambles of size " << scramble_size << ":\n";
+
+		for (int scr_num = 0; scr_num < 100; scr_num++) {
+			std::cout << "Scramble: " << scr_num << "\n";
+			std::vector<std::string> scramble = cube.scramble(scramble_size);
+
+			// Time Solve
+			timer.start();
+			solver.dfs();
+			auto solve_time = timer.stop();
+
+			file << "Time: " << solve_time.count() << "ms | ";
+
+			int i;
+			for (i = 0; i < scramble.size() - 1; i++) {
+				file << scramble[i] << ", ";
+			}
+			file << scramble[i] << " | ";
+
+			std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+			std::list<std::string> p1_sol = solution.first;
+			std::list<std::string> p2_sol = solution.second;
+
+			file << "(Phase 1) ";
+			for (std::string mv : p1_sol) {
+				file << mv << ", ";
+			}
+
+			file << "(Phase 2) ";
+			i = 0;
+			for (std::string mv : p2_sol) {
+				i++;
+				if (i < p2_sol.size()) {
+					file << mv << ", ";
+				}
+			}
+			file << "\n";
+
+			cube.reset();
+			solver.reset();
+		}
+
+		file.flush();
+
+		file << "\n";
+	}
+
+	if (!file.good()) {
+		std::cerr << "Write failed\n";
+	}
+}
+
+void solve(std::vector<std::string> scramble) {
 	Cube cube = Cube();
-	// std::vector<std::string> scramble = {"R", "U", "F", "R2", "B'", "D2"};
-	std::vector<std::string> scramble = {"U", "F", "R2", "B'", "D2"};
 	cube.execute_moves(scramble);
 	Solver solver = Solver(cube);
 	solver.dfs();
@@ -502,23 +629,28 @@ int main(int argc, char** argv) {
 	if (!solution.second.size()) {
 		std::cout << "No solution could be found with the current depth\n";
 	} else {
-		std::cout << "First\n";
+		std::cout << "First Phase:\n";
 		for (std::string move : solution.first) {
 			std::cout << move << ", ";
 		}
-		std::cout << "Second\n";
+		std::cout << "\nSecond Phase:\n";
 		for (std::string move : solution.second) {
 			std::cout << move << ", ";
 		}
-		std::cout << "Done\n";
-		std::cout << "Solution complete with: ";
+		std::cout << "\nSolution complete with: ";
 		solution.first.splice(solution.first.end(), solution.second);
 		for (std::string move : solution.first) {
 			std::cout << move << ", ";
 		}
 		std::cout <<"\n";
 	}
+}
 
+int main(int argc, char** argv) {
+	// std::vector<std::string> scramble = {"U", "F", "L2", "D2", "B"};
+	// solve(scramble);
 	
+	benchmark_solves();
+
 	return 0;
 }
