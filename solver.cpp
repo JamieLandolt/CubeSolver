@@ -356,8 +356,8 @@ private:
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	int DEPTH_PHASE_1 = 3;
-	int DEPTH_PHASE_2 = 9;
+	int DEPTH_PHASE_1 = 8;
+	int DEPTH_PHASE_2 = 12;
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
 	std::stack<int> depths;
@@ -372,6 +372,11 @@ private:
 	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> state;
 	std::vector<std::pair<int,int>>& corner_state;
 	std::vector<std::pair<int,int>>& edge_state;
+
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
+									{'D', std::unordered_set<char>{'D'}},
+									{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
+									{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 	
 public:
 	Solver(Cube& external_cube) : cube(external_cube), corner_state(state.first), edge_state(state.second), state(cube.get_state()) {}
@@ -429,30 +434,9 @@ public:
 			reset();
 
 			std::ofstream file("debug.txt");
-			int i = 0;
 			while (depths.size() > 0) {
-				i++;
-				if (i % 100000 == 0) {
-					std::cout << i << "\n";
-				}
-
 				// Get next node to visit
 				int depth = depths.top();
-
-				std::list<std::string> state_moves(moves.top());
-				for (std::string s : state_moves) {
-					file << s << ", ";
-				}
-				file << "\n";
-
-				if (state_moves.size() > 1) {
-					auto front = state_moves.front();
-					auto nxt = state_moves.begin();
-					nxt++;
-					if (front == "D" && *nxt == "B"){
-						int j = 0;
-					}
-				}
 
 				std::vector<std::pair<int,int>> corners = corner_states.top();
 				std::vector<std::pair<int,int>> edges = edge_states.top();
@@ -471,7 +455,6 @@ public:
 				if (phase_complete == 2) {
 					// Solved state has been found
 					solution.second = state_moves;
-					std::cout << "Number of iterations (total): " << i << "\n";
 
 					std::cout << "Found Sol: ";
 					for (std::string mv : solution.second) {
@@ -491,10 +474,6 @@ public:
 					move_space = DOMINO_MOVES;
 					search_depth = 1;
 					MAX_DEPTH = DEPTH_PHASE_2;
-					std::cout << "Number of iterations (first): " << i << "\n";
-					for (std::string mv : cube.get_scramble()) {
-						std::cout << mv << ", ";
-					}
 
 					std::cout << "Domino reduction complete with: ";
 					for (std::string s : state_moves) {
@@ -510,7 +489,6 @@ public:
 					std::stack<int> empty_depths;
 					std::swap(depths, empty_depths);
 					
-						
 					std::stack<std::list<std::string>> empty_moves;
 					std::swap(moves, empty_moves);
 
@@ -532,8 +510,12 @@ public:
 
 				// Search child nodes
 				for (std::string move : move_space) {
-					std::list<std::string> next_state_moves = state_moves;
+					if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
+						// Avoid moving the same side twice in a row
+						continue;
+					}
 					if (depth <= search_depth) {
+						std::list<std::string> next_state_moves = state_moves;
 						// Do the move
 						cube.set_state(corners, edges);
 						cube.move(move);
@@ -545,12 +527,9 @@ public:
 							next_state_moves.push_back(move);
 							moves.push(next_state_moves);
 
-
 							// Store new corner/edge states
 							corner_states.push(p.first);
 							edge_states.push(p.second);
-						} else {
-							// std::cout << "Found alr visited state\n";
 						}
 					}
 				}
@@ -598,13 +577,22 @@ public:
 class Timer {
 private:
 	std::chrono::high_resolution_clock::time_point start_time;
+	unordered_map<int,vector<std::chrono::milliseconds> times;
 public:
 	void start() {
 		start_time = std::chrono::high_resolution_clock::now();
 	}
 
-	auto stop() {
-		return std::chrono::high_resolution_clock::now() - start_time;
+	auto stop(int scramble_size) {
+		std::chrono::milliseconds time = std::chrono::duration_cast<std::chrono::milliseconds>(
+							std::chrono::high_resolution_clock::now() - start_time);
+		times[scramble_size].push_back(time);
+		return time;
+
+	}
+
+	unordered_map<int,vector<std::chrono::milliseconds>& get_times() {
+		return times;
 	}
 };
 
@@ -619,7 +607,7 @@ void benchmark_solves() {
 
 	Cube cube;
 	Solver solver = Solver(cube);
-	for (int scramble_size = 2; scramble_size < 100; scramble_size++) {
+	for (int scramble_size = 2; scramble_size < 25; scramble_size++) {
 		file << "Scrambles of size " << scramble_size << ":\n";
 		std::cout << "Scrambles of size " << scramble_size << ":\n";
 
@@ -711,11 +699,10 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	std::vector<std::string> scramble = {"R'", "B'", "D'"};
-	solve(scramble);
+	// std::vector<std::string> scramble = {"R'", "B'", "D'"};
+	// solve(scramble);
 	
-	// benchmark_solves();
-	// solve(std::vector<std::string>{"B'", "D", "F'", "R'"});
+	benchmark_solves();
 
 	return 0;
 }
