@@ -185,7 +185,7 @@ public:
 		std::string last = "";
 		for (int i = 0; i < scramble_size; i++) {
 			std::string move = MOVES[dist(gen)];
-			if (i != 0 && !banned_next_moves[move[0]].count(last[0])) {
+			if (i != 0 && banned_next_moves[move[0]].count(last[0])) {
 				i--;
 				continue;
 			}
@@ -397,6 +397,10 @@ public:
 		return solution;
 	}
 
+	void reset_solution() {
+		solution = {};
+	}
+
 	std::pair<uint32_t,uint64_t> hash(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges) {
 		uint32_t v1code = encodeVec1(corners);
 		uint64_t v2code = encodeVec2(edges);
@@ -439,7 +443,7 @@ public:
 	void dfs() {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
-		for (int search_depth = 1; search_depth < MAX_DEPTH; search_depth++) {
+		for (int search_depth = 0; search_depth < MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
 			
 			// Reset dfs state
@@ -660,6 +664,7 @@ void benchmark_solves() {
 
 			cube.reset();
 			solver.reset();
+			solver.reset_solution();;
 
 			file.flush();
 		}
@@ -701,10 +706,11 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	std::vector<std::string> scramble = {"U2", "D2", "F'", "R2"};
-	solve(scramble);
+	// for some reason the D2 L to solve doesn't show up in the DR phase when solving 
+	// std::vector<std::string> scramble = {"B2", "L'", "D2"};
+	// solve(scramble);
 	
-	// benchmark_solves();
+	benchmark_solves();
 
 	return 0;
 }
