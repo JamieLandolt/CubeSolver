@@ -155,6 +155,11 @@ private:
 
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
+									{'D', std::unordered_set<char>{'D'}}, {'F', std::unordered_set<char>{'F', 'B'}}, 
+									{'B', std::unordered_set<char>{'B'}}, {'R', std::unordered_set<char>{'R', 'L'}}, 
+									{'L', std::unordered_set<char>{'L'}}};
+
 public:
 	std::vector<std::pair<int,int>> corners;
 	std::vector<std::pair<int,int>> edges;
@@ -177,8 +182,15 @@ public:
 
 	std::vector<std::string> scramble(int scramble_size) {
 		scramble_moves.clear();
+		std::string last = "";
 		for (int i = 0; i < scramble_size; i++) {
-			scramble_moves.push_back(MOVES[dist(gen)]);
+			std::string move = MOVES[dist(gen)];
+			if (i != 0 && !banned_next_moves[move[0]].count(last[0])) {
+				i--;
+				continue;
+			}
+			last = move;
+			scramble_moves.push_back(move);
 		}
 		execute_moves(scramble_moves);
 		return scramble_moves;
@@ -441,6 +453,8 @@ public:
 				std::vector<std::pair<int,int>> corners = corner_states.top();
 				std::vector<std::pair<int,int>> edges = edge_states.top();
 
+				std::list<std::string> state_moves(moves.top());
+
 				depths.pop();
 				moves.pop();
 				corner_states.pop();
@@ -450,21 +464,11 @@ public:
 				visited.insert(hash(corners, edges));
 				
 				// Check for target state
-				int phase_complete = check_state(corners, edges, i);
+				int phase_complete = check_state(corners, edges);
 
 				if (phase_complete == 2) {
 					// Solved state has been found
 					solution.second = state_moves;
-
-					std::cout << "Found Sol: ";
-					for (std::string mv : solution.second) {
-						if (i < solution.second.size()) {
-							std::cout << mv << ", ";
-						} else {
-							std::cout << mv << "\n";
-						}
-					}
-
 					return;
 				}
 
@@ -537,7 +541,7 @@ public:
 		}
 	}
 
-	int check_state(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges, int i) {
+	int check_state(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges) {
 		// Checks if the current goal has been reached in the given position
 		// Goal is determined by SOLVER_PHASE
 
@@ -577,7 +581,7 @@ public:
 class Timer {
 private:
 	std::chrono::high_resolution_clock::time_point start_time;
-	unordered_map<int,vector<std::chrono::milliseconds> times;
+	std::unordered_map<int,std::vector<std::chrono::milliseconds>> times;
 public:
 	void start() {
 		start_time = std::chrono::high_resolution_clock::now();
@@ -591,7 +595,7 @@ public:
 
 	}
 
-	unordered_map<int,vector<std::chrono::milliseconds>& get_times() {
+	std::unordered_map<int,std::vector<std::chrono::milliseconds>>& get_times() {
 		return times;
 	}
 };
@@ -617,10 +621,8 @@ void benchmark_solves() {
 
 			// Time Solve
 			timer.start();
-
 			solver.dfs();
-
-			auto solve_time = timer.stop();
+			auto solve_time = timer.stop(scramble_size);
 
 			file << "Time: " << solve_time.count() << "ms | ";
 
@@ -699,10 +701,10 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	// std::vector<std::string> scramble = {"R'", "B'", "D'"};
-	// solve(scramble);
+	std::vector<std::string> scramble = {"U2", "D2", "F'", "R2"};
+	solve(scramble);
 	
-	benchmark_solves();
+	// benchmark_solves();
 
 	return 0;
 }
