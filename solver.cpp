@@ -174,12 +174,29 @@ public:
 		gen = std::mt19937(rd());
 		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
 	}
+
 	std::vector<std::string> scramble(int scramble_size) {
 		scramble_moves.clear();
 		for (int i = 0; i < scramble_size; i++) {
 			scramble_moves.push_back(MOVES[dist(gen)]);
 		}
 		execute_moves(scramble_moves);
+		return scramble_moves;
+	}
+
+	void set_scramble(std::vector<std::string> scramble_mvs) {
+		reset();
+		scramble_moves = scramble_mvs;
+		execute_moves(scramble_moves);
+	}
+
+	void to_phase(std::list<std::string> p1_moves) {
+		reset();
+		execute_moves(scramble_moves);
+		execute_moves(p1_moves);
+	}
+
+	std::vector<std::string> get_scramble() {
 		return scramble_moves;
 	}
 
@@ -312,6 +329,12 @@ public:
 		}
 	}
 
+	void execute_moves(std::list<std::string> moves) {
+		for (std::string m : moves) {
+			move(m);
+		}
+	}
+
 	void display() {
 		std::cout << "\nCorners: \n";
 		for (int i = 0; i < 8; i++) {
@@ -333,8 +356,8 @@ private:
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	int DEPTH_PHASE_1 = 5;
-	int DEPTH_PHASE_2 = 10;
+	int DEPTH_PHASE_1 = 3;
+	int DEPTH_PHASE_2 = 9;
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
 	std::stack<int> depths;
@@ -386,12 +409,10 @@ public:
 		std::swap(edge_states, empty_edges);
 
 		visited.clear();
-
-		SOLVER_PHASE = 0;
 		
-		solution = {};
-
+		cube.to_phase(solution.first);
 		auto state = cube.get_state();
+
 		depths.push(0);
 		moves.push(std::list<std::string>{});
 		corner_states.push(state.first);
@@ -399,110 +420,139 @@ public:
 	}
 
 	void dfs() {
-		depths.push(0);
-		moves.push(std::list<std::string>{});
-		corner_states.push(corner_state);
-		edge_states.push(edge_state);
-
-		int i = 0;
+		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
-		int search_depth = DEPTH_PHASE_1;
-		while (depths.size() > 0) {
-			i++;
-			if (i % 100000 == 0) {
-				std::cout << i << "\n";
-			}
-
-			// Get next node to visit
-			int depth = depths.top();
-
-			std::list<std::string> state_moves(moves.top());
-
-			std::vector<std::pair<int,int>> corners = corner_states.top();
-			std::vector<std::pair<int,int>> edges = edge_states.top();
-
-			depths.pop();
-			moves.pop();
-			corner_states.pop();
-			edge_states.pop();
-
-			// Hash and store visited state
-			visited.insert(hash(corners, edges));
+		for (int search_depth = 1; search_depth < MAX_DEPTH; search_depth++) {
+			std::cout << "Searching Depth: " << search_depth << "\n";
 			
-			// Check for target state
-			int phase_complete = check_state(corners, edges, i);
+			// Reset dfs state
+			reset();
 
-			if (phase_complete == 2) {
-				// Solved state has been found
-				solution.second = state_moves;
-				std::cout << "Number of iterations (total): " << i << "\n";
-				return;
-			}
-
-			// Domino reduced state has been found for the first time
-			if (phase_complete == 1 and SOLVER_PHASE == 0) {
-				SOLVER_PHASE++;
-				move_space = DOMINO_MOVES;
-				search_depth = DEPTH_PHASE_2;
-				std::cout << "Number of iterations (first): " << i << "\n";
-
-				std::cout << "Domino reduction complete with: ";
-				for (std::string s : state_moves) {
-					std::cout << s << ", ";
+			std::ofstream file("debug.txt");
+			int i = 0;
+			while (depths.size() > 0) {
+				i++;
+				if (i % 100000 == 0) {
+					std::cout << i << "\n";
 				}
-				std::cout << "\n";
 
-				// Save moves to get to that state
-				solution.first = state_moves;
-				state_moves.clear();
+				// Get next node to visit
+				int depth = depths.top();
 
-				// Clear all stacks
-				std::stack<int> empty_depths;
-				std::swap(depths, empty_depths);
+				std::list<std::string> state_moves(moves.top());
+				for (std::string s : state_moves) {
+					file << s << ", ";
+				}
+				file << "\n";
+
+				if (state_moves.size() > 1) {
+					auto front = state_moves.front();
+					auto nxt = state_moves.begin();
+					nxt++;
+					if (front == "D" && *nxt == "B"){
+						int j = 0;
+					}
+				}
+
+				std::vector<std::pair<int,int>> corners = corner_states.top();
+				std::vector<std::pair<int,int>> edges = edge_states.top();
+
+				depths.pop();
+				moves.pop();
+				corner_states.pop();
+				edge_states.pop();
+
+				// Hash and store visited state
+				visited.insert(hash(corners, edges));
 				
-					
-				std::stack<std::list<std::string>> empty_moves;
-				std::swap(moves, empty_moves);
+				// Check for target state
+				int phase_complete = check_state(corners, edges, i);
 
-				std::stack<std::vector<std::pair<int,int>>> empty_corners;
-				std::swap(corner_states, empty_corners);
+				if (phase_complete == 2) {
+					// Solved state has been found
+					solution.second = state_moves;
+					std::cout << "Number of iterations (total): " << i << "\n";
 
-				std::stack<std::vector<std::pair<int,int>>> empty_edges;
-				std::swap(edge_states, empty_edges);
-
-				visited.clear();
-
-				// Setup next phase of search to start from domino reduced state
-				depths.push(0);
-				moves.push(std::list<std::string>{});
-				corner_states.push(corners);
-				edge_states.push(edges);
-				continue;
-			}
-
-			// Search child nodes
-			for (std::string move : move_space) {
-				std::list<std::string> next_state_moves = state_moves;
-				if (depth + 1 <= search_depth) {
-					// Do the move
-					cube.set_state(corners, edges);
-					cube.move(move);
-					std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
-						
-					// Store if we haven't been in the state before
-					if (!visited.count(hash(p.first, p.second))) {
-						depths.push(depth + 1);
-						next_state_moves.push_back(move);
-						moves.push(next_state_moves);
-
-
-						// Store new corner/edge states
-						corner_states.push(p.first);
-						edge_states.push(p.second);
-					} else {
-						// std::cout << "Found alr visited state\n";
+					std::cout << "Found Sol: ";
+					for (std::string mv : solution.second) {
+						if (i < solution.second.size()) {
+							std::cout << mv << ", ";
+						} else {
+							std::cout << mv << "\n";
+						}
 					}
 
+					return;
+				}
+
+				// Domino reduced state has been found for the first time
+				if (phase_complete == 1 and SOLVER_PHASE == 0) {
+					SOLVER_PHASE++;
+					move_space = DOMINO_MOVES;
+					search_depth = 1;
+					MAX_DEPTH = DEPTH_PHASE_2;
+					std::cout << "Number of iterations (first): " << i << "\n";
+					for (std::string mv : cube.get_scramble()) {
+						std::cout << mv << ", ";
+					}
+
+					std::cout << "Domino reduction complete with: ";
+					for (std::string s : state_moves) {
+						std::cout << s << ", ";
+					}
+					std::cout << "\n";
+
+					// Save moves to get to that state
+					solution.first = state_moves;
+					state_moves.clear();
+
+					// Clear all stacks
+					std::stack<int> empty_depths;
+					std::swap(depths, empty_depths);
+					
+						
+					std::stack<std::list<std::string>> empty_moves;
+					std::swap(moves, empty_moves);
+
+					std::stack<std::vector<std::pair<int,int>>> empty_corners;
+					std::swap(corner_states, empty_corners);
+
+					std::stack<std::vector<std::pair<int,int>>> empty_edges;
+					std::swap(edge_states, empty_edges);
+
+					visited.clear();
+
+					// Setup next phase of search to start from domino reduced state
+					depths.push(0);
+					moves.push(std::list<std::string>{});
+					corner_states.push(corners);
+					edge_states.push(edges);
+					continue;
+				}
+
+				// Search child nodes
+				for (std::string move : move_space) {
+					std::list<std::string> next_state_moves = state_moves;
+					if (depth <= search_depth) {
+						// Do the move
+						cube.set_state(corners, edges);
+						cube.move(move);
+						std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+							
+						// Store if we haven't been in the state before
+						if (!visited.count(hash(p.first, p.second))) {
+							depths.push(depth + 1);
+							next_state_moves.push_back(move);
+							moves.push(next_state_moves);
+
+
+							// Store new corner/edge states
+							corner_states.push(p.first);
+							edge_states.push(p.second);
+						} else {
+							// std::cout << "Found alr visited state\n";
+						}
+					}
 				}
 			}
 		}
@@ -516,6 +566,7 @@ public:
 		std::vector<std::pair<int,int>> CORNERS_SOLVED = cube_state.first;
 		std::vector<std::pair<int,int>> EDGES_SOLVED = cube_state.second;
 
+		std::unordered_set<int> mid_layer_edges = {4, 5, 6, 7};
 
 		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
 			return 2;
@@ -530,6 +581,9 @@ public:
 
 			for (int i = 0; i < edges.size(); i++) {
 				if (edges.at(i).first) {
+					return 0;
+				}
+				if (mid_layer_edges.count(i) && !mid_layer_edges.count(edges.at(i).second)) {
 					return 0;
 				}
 			} 
@@ -565,22 +619,25 @@ void benchmark_solves() {
 
 	Cube cube;
 	Solver solver = Solver(cube);
-	for (int scramble_size = 2; scramble_size < 15; scramble_size++) {
+	for (int scramble_size = 2; scramble_size < 100; scramble_size++) {
 		file << "Scrambles of size " << scramble_size << ":\n";
 		std::cout << "Scrambles of size " << scramble_size << ":\n";
 
-		for (int scr_num = 0; scr_num < 100; scr_num++) {
+		for (int scr_num = 0; scr_num < 5; scr_num++) {
 			std::cout << "Scramble: " << scr_num << "\n";
 			std::vector<std::string> scramble = cube.scramble(scramble_size);
 
 			// Time Solve
 			timer.start();
+
 			solver.dfs();
+
 			auto solve_time = timer.stop();
 
 			file << "Time: " << solve_time.count() << "ms | ";
 
 			int i;
+			file << "Scramble Moves: ";
 			for (i = 0; i < scramble.size() - 1; i++) {
 				file << scramble[i] << ", ";
 			}
@@ -590,26 +647,33 @@ void benchmark_solves() {
 			std::list<std::string> p1_sol = solution.first;
 			std::list<std::string> p2_sol = solution.second;
 
+			i = 0;
 			file << "(Phase 1) ";
 			for (std::string mv : p1_sol) {
-				file << mv << ", ";
+				i++;
+				if (i < p1_sol.size()) {
+					file << mv << ", ";
+				} else {
+					file << mv << " | ";
+				}
 			}
 
 			file << "(Phase 2) ";
-			i = 0;
 			for (std::string mv : p2_sol) {
-				i++;
 				if (i < p2_sol.size()) {
 					file << mv << ", ";
+				} else {
+					file << mv;
 				}
 			}
 			file << "\n";
 
 			cube.reset();
 			solver.reset();
+
+			file.flush();
 		}
 
-		file.flush();
 
 		file << "\n";
 	}
@@ -621,7 +685,7 @@ void benchmark_solves() {
 
 void solve(std::vector<std::string> scramble) {
 	Cube cube = Cube();
-	cube.execute_moves(scramble);
+	cube.set_scramble(scramble);
 	Solver solver = Solver(cube);
 	solver.dfs();
 
@@ -647,10 +711,11 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	// std::vector<std::string> scramble = {"U", "F", "L2", "D2", "B"};
-	// solve(scramble);
+	std::vector<std::string> scramble = {"R'", "B'", "D'"};
+	solve(scramble);
 	
-	benchmark_solves();
+	// benchmark_solves();
+	// solve(std::vector<std::string>{"B'", "D", "F'", "R'"});
 
 	return 0;
 }
