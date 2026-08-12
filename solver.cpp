@@ -602,6 +602,20 @@ public:
 	std::unordered_map<int,std::vector<std::chrono::milliseconds>>& get_times() {
 		return times;
 	}
+
+	std::chrono::milliseconds avg(std::vector<std::chrono::milliseconds> ts) {
+		std::chrono::milliseconds base;
+		std::chrono::milliseconds total = std::accumulate(ts.begin(), ts.end(), base);
+		return total / ts.size();
+	}
+
+	unordered_map<int,std::vector<std::chrono::milliseconds> get_avg_times() {
+		unordered_map<int,vector<std::chrono::milliseconds> avg_times;
+		for (const auto& [size, times] : times) {
+			avg_times[size] = avg(times);
+		}
+		return avg_times;
+	}
 };
 
 void benchmark_solves() {
@@ -671,6 +685,11 @@ void benchmark_solves() {
 
 
 		file << "\n";
+	}
+
+	file << "Averages:\n";
+	for (const auto& [size, times] : timer.get_avg_times()) {
+		file << "Scramble size " << size << ": " << times << "\n";
 	}
 
 	if (!file.good()) {
