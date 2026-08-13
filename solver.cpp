@@ -16,6 +16,7 @@
 
 #include <random>
 
+// Functions for mapping old to new orientations of corners depending on which sides of the cube are turned
 int RL_CORNER_MAPPING(int x) {
 	if (x == 0) {
 		return 1;
@@ -55,7 +56,7 @@ int FB_CORNER_MAPPING(int x) {
 	return -1;
 }
 
-
+// A hash for a cube state to store visited states while DFSing
 struct StateHash {
     size_t operator()(const std::pair<uint32_t, uint64_t>& p) const {
         size_t h1 = std::hash<uint32_t>()(p.first);
@@ -121,6 +122,7 @@ private:
 	std::vector<std::pair<int,int>> CORNERS_SOLVED;
 	std::vector<std::pair<int,int>> EDGES_SOLVED;
 
+	// Models which corners cycle to where depending on which side was turned
 	std::vector<int> R_CORNER_CYCLE {2, 1, 5, 6};
 	std::vector<int> L_CORNER_CYCLE {0, 3, 7, 4};
 	std::vector<int> U_CORNER_CYCLE {0, 1, 2, 3};
@@ -128,6 +130,7 @@ private:
 	std::vector<int> F_CORNER_CYCLE {3, 2, 6, 7};
 	std::vector<int> B_CORNER_CYCLE {1, 0, 4, 5};
 
+	// Models which edges cycle to where depending on which side was turned
 	std::vector<int> R_EDGE_CYCLE {1, 5, 9, 6};
 	std::vector<int> L_EDGE_CYCLE {3, 7, 11, 4};
 	std::vector<int> U_EDGE_CYCLE {0, 1, 2, 3};
@@ -135,11 +138,13 @@ private:
 	std::vector<int> F_EDGE_CYCLE {2, 6, 10, 7};
 	std::vector<int> B_EDGE_CYCLE {0, 4, 8, 5};
 
+	// How the orientation of each edge changes depending on which side was turned
 	// Starts at the topmost edge on the side (before the turn) and goes clockwise around to each edge. 1 means its orientation changes.
 	std::vector<int> RL_EDGE_ROTATION {0, 0, 0, 0};
 	std::vector<int> UD_EDGE_ROTATION {0, 0, 0, 0};
 	std::vector<int> FB_EDGE_ROTATION {1, 1, 1, 1};
 
+	// Maps for easy implementation later
 	std::unordered_map<char,std::vector<int>> corner_cycles = {{'R', R_CORNER_CYCLE}, {'L', L_CORNER_CYCLE}, {'U', U_CORNER_CYCLE},
 								 {'D', D_CORNER_CYCLE}, {'F', F_CORNER_CYCLE}, {'B', B_CORNER_CYCLE}};
 	std::unordered_map<char,std::vector<int>> edge_cycles = {{'R', R_EDGE_CYCLE}, {'L', L_EDGE_CYCLE}, {'U', U_EDGE_CYCLE},
@@ -165,6 +170,7 @@ public:
 	std::vector<std::pair<int,int>> edges;
 
 	Cube() {
+		// Setup solved cube state
 		for (int i = 0; i < 8; i++) {
 			CORNERS_SOLVED.push_back(std::pair<int,int>{0, i});
 		}
@@ -720,11 +726,6 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	// for some reason the D2 L to solve doesn't show up in the DR phase when solving 
-	// std::vector<std::string> scramble = {"B2", "L'", "D2"};
-	// solve(scramble);
-	
 	benchmark_solves();
-
 	return 0;
 }
