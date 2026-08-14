@@ -1,3 +1,7 @@
+#include "rotation.h"
+#include "timer.h"
+#include "hash.h"
+
 #include <string>
 #include <list>
 #include <vector>
@@ -9,150 +13,18 @@
 #include <iostream>
 #include <fstream>
 
-#include <functional>
 #include <algorithm>
-#include <cstdint>
-#include <chrono>
 
 #include <random>
-
-// Functions for mapping old to new orientations of corners depending on which sides of the cube are turned
-int RL_CORNER_MAPPING(int x) {
-	if (x == 0) {
-		return 1;
-	} else if (x == 1) {
-		return 0;
-	} else if (x == 2) {
-		return 2;
-	} else {
-		std::cout << "Invalid RL corner orientation: " << x << "\n";
-	}
-	return -1;
-}
-
-int UD_CORNER_MAPPING(int x) {
-	if (x == 0) {
-		return 0;
-	} else if (x == 1) {
-		return 2;
-	} else if (x == 2) {
-		return 1;
-	} else {
-		std::cout << "Invalid UD corner orientation: " << x << "\n";
-	}
-	return -1;
-}
-
-int FB_CORNER_MAPPING(int x) {
-	if (x == 0) {
-		return 2;
-	} else if (x == 1) {
-		return 1;
-	} else if (x == 2) {
-		return 0;
-	} else {
-		std::cout << "Invalid RL corner orientation: " << x << "\n";
-	}
-	return -1;
-}
-
-// A hash for a cube state to store visited states while DFSing
-struct StateHash {
-    size_t operator()(const std::pair<uint32_t, uint64_t>& p) const {
-        size_t h1 = std::hash<uint32_t>()(p.first);
-        size_t h2 = std::hash<uint64_t>()(p.second);
-        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-    }
-};
-
-uint64_t permRank(const std::vector<int>& perm) {
-    int n = perm.size();
-    std::vector<bool> used(n, false);
-    uint64_t rank = 0;
-    uint64_t fact = 1;
-    for (int i = n - 2; i >= 0; i--) fact *= (i + 1); // (n-1)!
-
-    for (int i = 0; i < n; i++) {
-        int smaller = 0;
-        for (int j = perm[i] - 1; j >= 0; j--) {
-            if (!used[j]) smaller++;
-        }
-        rank += smaller * fact;
-        used[perm[i]] = true;
-        if (i < n - 1) fact /= (n - 1 - i);
-    }
-    return rank;
-}
-
-// vector 1: 8 pairs, first value 0-2, second value unique 0-7, order matters
-uint32_t encodeVec1(const std::vector<std::pair<int,int>>& v) {
-    std::vector<int> order(8);
-    int arr[8];
-    for (int i = 0; i < 8; i++) {
-        order[i] = v[i].second;   // sequence of labels
-        arr[v[i].second] = v[i].first;
-    }
-    uint32_t permPart = (uint32_t)permRank(order);   // 0 to 40319
-    uint32_t valuePart = 0;
-    for (int i = 0; i < 8; i++) valuePart = valuePart * 3 + arr[i]; // 0 to 6560
-
-    return permPart * 6561 + valuePart;
-}
-
-// vector 2: 12 pairs, first value 0-1, second value unique 0-11, order matters
-uint64_t encodeVec2(const std::vector<std::pair<int,int>>& v) {
-    std::vector<int> order(12);
-    uint32_t bitmask = 0;
-    for (int i = 0; i < 12; i++) {
-        order[i] = v[i].second;
-        if (v[i].first == 1) bitmask |= (1u << v[i].second);
-    }
-    uint64_t permPart = permRank(order);   // 0 to 479001599
-    uint64_t valuePart = bitmask;          // 0 to 4095
-
-    return permPart * 4096ull + valuePart;
-}
-
 
 class Cube {
 private:
 	// Corner Encoding: Where the W/Y side is facing. TB = 0, FB = 1, RL = 2.
 	// Edge Encoding: If the higher in the colour hierarchy is the higher value in the face hierarchy then 0 else 1
 	// Hierarchy: WY/GB/RO TB/FB/RL
-	std::vector<std::pair<int,int>> CORNERS_SOLVED;
-	std::vector<std::pair<int,int>> EDGES_SOLVED;
+	long CORNERS_SOLVED = 0b00111'00110'00101'00100'00011'00010'00001'00000;
+	long EDGES_SOLVED = 0b01011'01010'01001'01000'00111'00110'00101'00100'00011'00010'00001'00000;
 
-	// Models which corners cycle to where depending on which side was turned
-	std::vector<int> R_CORNER_CYCLE {2, 1, 5, 6};
-	std::vector<int> L_CORNER_CYCLE {0, 3, 7, 4};
-	std::vector<int> U_CORNER_CYCLE {0, 1, 2, 3};
-	std::vector<int> D_CORNER_CYCLE {7, 6, 5, 4};
-	std::vector<int> F_CORNER_CYCLE {3, 2, 6, 7};
-	std::vector<int> B_CORNER_CYCLE {1, 0, 4, 5};
-
-	// Models which edges cycle to where depending on which side was turned
-	std::vector<int> R_EDGE_CYCLE {1, 5, 9, 6};
-	std::vector<int> L_EDGE_CYCLE {3, 7, 11, 4};
-	std::vector<int> U_EDGE_CYCLE {0, 1, 2, 3};
-	std::vector<int> D_EDGE_CYCLE {10, 9, 8, 11};
-	std::vector<int> F_EDGE_CYCLE {2, 6, 10, 7};
-	std::vector<int> B_EDGE_CYCLE {0, 4, 8, 5};
-
-	// How the orientation of each edge changes depending on which side was turned
-	// Starts at the topmost edge on the side (before the turn) and goes clockwise around to each edge. 1 means its orientation changes.
-	std::vector<int> RL_EDGE_ROTATION {0, 0, 0, 0};
-	std::vector<int> UD_EDGE_ROTATION {0, 0, 0, 0};
-	std::vector<int> FB_EDGE_ROTATION {1, 1, 1, 1};
-
-	// Maps for easy implementation later
-	std::unordered_map<char,std::vector<int>> corner_cycles = {{'R', R_CORNER_CYCLE}, {'L', L_CORNER_CYCLE}, {'U', U_CORNER_CYCLE},
-								 {'D', D_CORNER_CYCLE}, {'F', F_CORNER_CYCLE}, {'B', B_CORNER_CYCLE}};
-	std::unordered_map<char,std::vector<int>> edge_cycles = {{'R', R_EDGE_CYCLE}, {'L', L_EDGE_CYCLE}, {'U', U_EDGE_CYCLE},
-								 {'D', D_EDGE_CYCLE}, {'F', F_EDGE_CYCLE}, {'B', B_EDGE_CYCLE}};
-	std::unordered_map<char,std::function<int(int)>> corner_rotations = {{'R', RL_CORNER_MAPPING}, {'L', RL_CORNER_MAPPING}, {'U', UD_CORNER_MAPPING},
-								 {'D', UD_CORNER_MAPPING}, {'F', FB_CORNER_MAPPING}, {'B', FB_CORNER_MAPPING}};
-	std::unordered_map<char,std::vector<int>> edge_rotations = {{'R', RL_EDGE_ROTATION}, {'L', RL_EDGE_ROTATION}, {'U', UD_EDGE_ROTATION},
-								 {'D', UD_EDGE_ROTATION}, {'F', FB_EDGE_ROTATION}, {'B', FB_EDGE_ROTATION}};
 	std::vector<std::string> scramble_moves;
 
 	std::mt19937 gen;
@@ -263,82 +135,8 @@ public:
 		// edge_rotation: Same as corner roation but for edges and you just add the number % 2 to the edge rotation instead of a function
 		// direction: Either 1, -1, 2 depending on whether you are doing an R, R', or R2 for example. 
 		// Adjustments to the corner and edge cycle should be made (or they should be performed multiple times) if R2 for example
+		
 
-
-		if (direction != -1 && direction != 1) {
-			std::cout << "Invalid direction given: " << direction << "\n";
-		}
-
-		if (direction == -1) {
-			std::vector<int> rev_corner_cycle(corner_cycle);
-			std::reverse(rev_corner_cycle.begin(), rev_corner_cycle.end());
-			corner_cycle = rev_corner_cycle;
-
-		        std::vector<int> rev_edge_cycle(edge_cycle);
-			std::reverse(rev_edge_cycle.begin(), rev_edge_cycle.end());
-			edge_cycle = rev_edge_cycle;
-		}
-
-		// ATP whether the direction was -1 or 1 the variables have been updated so that the below code should cycle correctly, theoretically
-
-		// Number of edges/corners that are affected by a move (size of corner_cycle or edge_cycle)
-		int affected_pieces = 4;
-
-		int corner_pos = corner_cycle[0];
-		std::pair<int,int> next_corner(corners[corner_pos]);
-
-		int edge_pos = edge_cycle[0];
-		std::pair<int,int> next_edge(edges[edge_pos]);
-
-		// Update corner and edge rotation
-		for (int i = 0; i < affected_pieces; i++) {
-			int next_corner_pos = corner_cycle[(i + 1) % affected_pieces];
-
-			int next_edge_pos = edge_cycle[(i + 1) % affected_pieces];
-			int edge_rot = edge_rotation[i];
-
-			// Get corner and copy the next before replacing it
-			std::pair<int,int> curr_corner = next_corner;
-			next_corner = corners[next_corner_pos];
-
-			// Get edge and copy the next before replacing it
-			std::pair<int,int> curr_edge = next_edge;
-			next_edge = edges[next_edge_pos];
-
-			// Rotate FIRST then Move
-			curr_corner.first = corner_rotation(curr_corner.first);
-			corners[next_corner_pos] = curr_corner;
-
-			// On each move edge_rot is either 0 or 1 corresponding to whether the EO was flipped
-			// Mod 2 keeps rotation between 0 and 1
-			curr_edge.first = (curr_edge.first + edge_rot) % 2;
-			edges[next_edge_pos] = curr_edge;
-		}
-	}
-
-	std::pair<int,int> get_piece_at(int corner, int pos) {
-		// corner if corner = 1 else edge
-		// num => the number of the corner or edge
-		std::pair<int,int> p;
-
-		if (corner) {
-			if (!(0 <= pos && pos <= 7)) {
-				std::cout << "Invalid Corner Chosen: " << pos << "\n";
-				pos = 0;
-			} else {
-				p = corners[pos];
-			}
-		} else {
-			if (!(0 <= pos && pos <= 11)) {
-				std::cout << "Invalid Edge Chosen: " << pos << "\n";
-				pos = 0;
-			} else {
-				p = edges[pos];
-			}
-
-		}
-
-		return p;
 	}
 
 	void execute_moves(std::vector<std::string> moves) {
@@ -354,17 +152,6 @@ public:
 	}
 
 	void display() {
-		std::cout << "\nCorners: \n";
-		for (int i = 0; i < 8; i++) {
-			std::pair<int,int> p = get_piece_at(1, i);
-			std::cout << p.first << " | " << p.second << "\n";
-		}
-
-		std::cout << "\nEdges: \n";
-		for (int i = 0; i < 12; i++) {
-			std::pair<int,int> p = get_piece_at(0, i);
-			std::cout << p.first << " | " << p.second << "\n";
-		}
 	}
 };
 
@@ -585,42 +372,6 @@ public:
 		}
 
 		return 0;
-	}
-};
-
-class Timer {
-private:
-	std::chrono::high_resolution_clock::time_point start_time;
-	std::unordered_map<int,std::vector<std::chrono::milliseconds>> times;
-public:
-	void start() {
-		start_time = std::chrono::high_resolution_clock::now();
-	}
-
-	auto stop(int scramble_size) {
-		std::chrono::milliseconds time = std::chrono::duration_cast<std::chrono::milliseconds>(
-							std::chrono::high_resolution_clock::now() - start_time);
-		times[scramble_size].push_back(time);
-		return time;
-
-	}
-
-	std::unordered_map<int,std::vector<std::chrono::milliseconds>>& get_times() {
-		return times;
-	}
-
-	long avg(std::vector<std::chrono::milliseconds> ts) {
-		std::chrono::milliseconds base{0};
-		std::chrono::milliseconds total = std::accumulate(ts.begin(), ts.end(), base);
-		return (total / ts.size()).count();
-	}
-
-	std::unordered_map<int,long> get_avg_times() {
-		std::unordered_map<int,long> avg_times;
-		for (const auto& [size, times] : times) {
-			avg_times[size] = avg(times);
-		}
-		return avg_times;
 	}
 };
 
