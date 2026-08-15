@@ -32,27 +32,21 @@ private:
 
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 
+	std::unordered_map<char,std::function<long(long,int)>> corner_cycles = {{'R', R_CORNER_CYCLE}, {'L', L_CORNER_CYCLE}, {'U', U_CORNER_CYCLE},
+								 {'D', D_CORNER_CYCLE}, {'F', F_CORNER_CYCLE}, {'B', B_CORNER_CYCLE}};
+	std::unordered_map<char,std::function<long(long,int)>> edge_cycles = {{'R', R_EDGE_CYCLE}, {'L', L_EDGE_CYCLE}, {'U', U_EDGE_CYCLE},
+								 {'D', D_EDGE_CYCLE}, {'F', F_EDGE_CYCLE}, {'B', B_EDGE_CYCLE}};
+
 	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
 									{'D', std::unordered_set<char>{'D'}}, {'F', std::unordered_set<char>{'F', 'B'}}, 
 									{'B', std::unordered_set<char>{'B'}}, {'R', std::unordered_set<char>{'R', 'L'}}, 
 									{'L', std::unordered_set<char>{'L'}}};
 
 public:
-	std::vector<std::pair<int,int>> corners;
-	std::vector<std::pair<int,int>> edges;
+	long& corners;
+	long& edges;
 
-	Cube() {
-		// Setup solved cube state
-		for (int i = 0; i < 8; i++) {
-			CORNERS_SOLVED.push_back(std::pair<int,int>{0, i});
-		}
-		for (int i = 0; i < 12; i++) {
-			EDGES_SOLVED.push_back(std::pair<int,int>{0, i});
-		}
-		corners = CORNERS_SOLVED;
-		edges = EDGES_SOLVED;
-		
-
+	Cube() : corners(CORNERS_SOLVED), edges(EDGES_SOLVED) {
 		std::random_device rd;
 		gen = std::mt19937(rd());
 		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
@@ -90,7 +84,7 @@ public:
 		return scramble_moves;
 	}
 
-	void set_state(std::vector<std::pair<int,int>> new_corners, std::vector<std::pair<int,int>> new_edges) {
+	void set_state(long new_corners, long new_edges) {
 		corners = new_corners;
 		edges = new_edges;
 	}
@@ -99,44 +93,33 @@ public:
 		set_state(CORNERS_SOLVED, EDGES_SOLVED);
 	}
 
-	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> get_state() {
+	std::pair<long&,long&> get_state() {
 		return {corners, edges};
 	}
 
-	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> get_solved_state() {
+	std::pair<long,long> get_solved_state() {
 		return {CORNERS_SOLVED, EDGES_SOLVED};
 	}
 
 	void move(std::string mv) {
 		if (mv.size() == 1) {
-			cycle(corners, edges, corner_cycles[mv[0]], edge_cycles[mv[0]], corner_rotations[mv[0]], edge_rotations[mv[0]], 1);
+			cycle(1, mv[0]);
 		} else if (mv[1] == '2') {
-			cycle(corners, edges, corner_cycles[mv[0]], edge_cycles[mv[0]], corner_rotations[mv[0]], edge_rotations[mv[0]], 1);
-			cycle(corners, edges, corner_cycles[mv[0]], edge_cycles[mv[0]], corner_rotations[mv[0]], edge_rotations[mv[0]], 1);
+			cycle(2, mv[0]);
 		} else if (mv[1] == '\'') {
-			cycle(corners, edges, corner_cycles[mv[0]], edge_cycles[mv[0]], corner_rotations[mv[0]], edge_rotations[mv[0]], -1);
+			cycle(-1, mv[0]);
 		} else {
 			std::cout << "Invalid move given: " << mv << "\n";
 		}
 	}
 
-	void cycle(std::vector<std::pair<int,int>>& corners, std::vector<std::pair<int,int>>& edges, std::vector<int> corner_cycle,
-		       std::vector<int> edge_cycle, std::function<int(int)> corner_rotation,
-		       std::vector<int> edge_rotation, int direction) {
-		// corners: Holds pairs corresponding to the rotation and corner number in each of the 7 corner positions in order from 0 to 7
-		// edges: Holds pairs corresponding to the rotation and edge number in each of the 11 edge positions in order from 0 to 11
-		// For corner and edge cycle vectors, the corner in the last position should cycle to the position in the first slot of the vector
-		// corner_cycle: For the given move it holds the corners in the order that their rotation should be updated (according to 
-		// corner_rotation) and also each corner in the position given by the number in the vector moves to the position of the the next 
-		// corner
-		// edge_cycle: For the move being performed, the edges that are currently in the positions that are stored in this vector should 
-		// cycle to the next position in the vector
-		// corner_rotation: Stores functions that should update the rotations of the corners in the positions stored in corner_cycle
-		// edge_rotation: Same as corner roation but for edges and you just add the number % 2 to the edge rotation instead of a function
+	void cycle(int direction, char move_type) {
 		// direction: Either 1, -1, 2 depending on whether you are doing an R, R', or R2 for example. 
-		// Adjustments to the corner and edge cycle should be made (or they should be performed multiple times) if R2 for example
-		
+		std::function<long(long,int)> corner_cycler = corner_cycles[move_type];
+		std::function<long(long,int)> edge_cycler = edge_cycles[move_type];
 
+		corners = corner_cycler(corners, direction);
+		edges = edge_cycler(edges, direction);
 	}
 
 	void execute_moves(std::vector<std::string> moves) {
@@ -152,6 +135,7 @@ public:
 	}
 
 	void display() {
+		
 	}
 };
 
@@ -167,16 +151,16 @@ private:
 
 	std::stack<int> depths;
 	std::stack<std::list<std::string>> moves;
-	std::stack<std::vector<std::pair<int,int>>> corner_states;
-	std::stack<std::vector<std::pair<int,int>>> edge_states;
-	std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+	std::stack<long> corner_states;
+	std::stack<long> edge_states;
+	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
-	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> state;
-	std::vector<std::pair<int,int>>& corner_state;
-	std::vector<std::pair<int,int>>& edge_state;
+	std::pair<long&,long&> state;
+	long& corner_state;
+	long& edge_state;
 
 	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
 									{'D', std::unordered_set<char>{'D'}},
@@ -192,12 +176,6 @@ public:
 
 	void reset_solution() {
 		solution = {};
-	}
-
-	std::pair<uint32_t,uint64_t> hash(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges) {
-		uint32_t v1code = encodeVec1(corners);
-		uint64_t v2code = encodeVec2(edges);
-		return std::make_pair(v1code, v2code); 
 	}
 
 	void set_depth(int type, int depth) {
@@ -216,10 +194,10 @@ public:
 		std::stack<std::list<std::string>> empty_moves;
 		std::swap(moves, empty_moves);
 
-		std::stack<std::vector<std::pair<int,int>>> empty_corners;
+		std::stack<long> empty_corners;
 		std::swap(corner_states, empty_corners);
 
-		std::stack<std::vector<std::pair<int,int>>> empty_edges;
+		std::stack<long> empty_edges;
 		std::swap(edge_states, empty_edges);
 
 		visited.clear();
@@ -247,8 +225,8 @@ public:
 				// Get next node to visit
 				int depth = depths.top();
 
-				std::vector<std::pair<int,int>> corners = corner_states.top();
-				std::vector<std::pair<int,int>> edges = edge_states.top();
+				long corners = corner_states.top();
+				long edges = edge_states.top();
 
 				std::list<std::string> state_moves(moves.top());
 
@@ -258,7 +236,7 @@ public:
 				edge_states.pop();
 
 				// Hash and store visited state
-				visited.insert(hash(corners, edges));
+				visited.insert({corners, edges});
 				
 				// Check for target state
 				int phase_complete = check_state(corners, edges);
@@ -293,10 +271,10 @@ public:
 					std::stack<std::list<std::string>> empty_moves;
 					std::swap(moves, empty_moves);
 
-					std::stack<std::vector<std::pair<int,int>>> empty_corners;
+					std::stack<long> empty_corners;
 					std::swap(corner_states, empty_corners);
 
-					std::stack<std::vector<std::pair<int,int>>> empty_edges;
+					std::stack<long> empty_edges;
 					std::swap(edge_states, empty_edges);
 
 					visited.clear();
@@ -320,10 +298,10 @@ public:
 						// Do the move
 						cube.set_state(corners, edges);
 						cube.move(move);
-						std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+						std::pair<long,long> p = cube.get_state();
 							
 						// Store if we haven't been in the state before
-						if (!visited.count(hash(p.first, p.second))) {
+						if (!visited.count(p)) {
 							depths.push(depth + 1);
 							next_state_moves.push_back(move);
 							moves.push(next_state_moves);
@@ -338,32 +316,36 @@ public:
 		}
 	}
 
-	int check_state(std::vector<std::pair<int,int>> corners, std::vector<std::pair<int,int>> edges) {
+	int check_state(long corners, long edges) {
 		// Checks if the current goal has been reached in the given position
 		// Goal is determined by SOLVER_PHASE
 
-		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> cube_state = cube.get_solved_state();
-		std::vector<std::pair<int,int>> CORNERS_SOLVED = cube_state.first;
-		std::vector<std::pair<int,int>> EDGES_SOLVED = cube_state.second;
+		std::pair<long,long> cube_state = cube.get_solved_state();
+		long CORNERS_SOLVED = cube_state.first;
+		long EDGES_SOLVED = cube_state.second;
 
 		std::unordered_set<int> mid_layer_edges = {4, 5, 6, 7};
+
+		int num_corners = 8;
+		int num_edges = 12;
 
 		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
 			return 2;
 		}
 
 		if (SOLVER_PHASE == 0) {
-			for (int i = 0; i < corners.size(); i++) {
-				if (corners.at(i).first) {
+			for (int i = 0; i < num_corners; i++) {
+				if (corners & (ZERO_CORI_MASK << i * 5)) {
 					return 0;
 				}
 			} 
 
-			for (int i = 0; i < edges.size(); i++) {
-				if (edges.at(i).first) {
+			for (int i = 0; i < num_edges; i++) {
+				if (edges & (ZERO_EORI_MASK << i * 5)) {
 					return 0;
 				}
-				if (mid_layer_edges.count(i) && !mid_layer_edges.count(edges.at(i).second)) {
+				// If a non middle layer edge is in a middle layer edge position
+				if (mid_layer_edges.count(i) && !mid_layer_edges.count((edges & (ZERO_EPOS_MASK << i * 5)) >> i * 5)) {
 					return 0;
 				}
 			} 
@@ -402,6 +384,7 @@ void benchmark_solves() {
 			file << "Time: " << solve_time.count() << "ms | ";
 
 			int i;
+			// If a non middle layer edge is in a middle layer edge position
 			file << "Scramble Moves: ";
 			for (i = 0; i < scramble.size() - 1; i++) {
 				file << scramble[i] << ", ";
