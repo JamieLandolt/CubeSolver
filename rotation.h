@@ -75,6 +75,7 @@ long R_CORNER_CYCLE(long corners, int direction) {
 
 	long bit1;
 	long bit2;
+	long bit2_pos;
 
 	long two_orientation;
 	long one_orientation;
@@ -83,19 +84,23 @@ long R_CORNER_CYCLE(long corners, int direction) {
 	if (direction != 2) {
 		bit1 = corners & 1ULL << 2 * 5 + 4;
 		bit2 = corners & 1ULL << 2 * 5 + 3;
-		two_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 2 * 5 + 3;
+		two_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 1 * 5 + 4;
 		bit2 = corners & 1ULL << 1 * 5 + 3;
-		one_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 1 * 5 + 3;
+		one_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 5 * 5 + 4;
 		bit2 = corners & 1ULL << 5 * 5 + 3;
-		five_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 5 * 5 + 3;
+		five_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 6 * 5 + 4;
 		bit2 = corners & 1ULL << 6 * 5 + 3;
-		six_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 6 * 5 + 3;
+		six_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 	 } else {
 		// Orientation stays the same for any double move
 		two_orientation = corners & TWO_CORI_MASK;
@@ -109,7 +114,7 @@ long R_CORNER_CYCLE(long corners, int direction) {
 	int one_shift;
 	int five_shift;
 	int six_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		two_shift = 5;
 		one_shift = 4 * 5;
@@ -155,6 +160,7 @@ long L_CORNER_CYCLE(long corners, int direction) {
 
 	long bit1;
 	long bit2;
+	long bit2_pos;
 
 	long zero_orientation;
 	long three_orientation;
@@ -163,19 +169,23 @@ long L_CORNER_CYCLE(long corners, int direction) {
 	if (direction != 2) {
 		bit1 = corners & 1ULL << 0 * 5 + 4;
 		bit2 = corners & 1ULL << 0 * 5 + 3;
-		zero_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 0 * 5 + 3;
+		zero_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 3 * 5 + 4;
 		bit2 = corners & 1ULL << 3 * 5 + 3;
-		three_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 3 * 5 + 3;
+		three_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 7 * 5 + 4;
 		bit2 = corners & 1ULL << 7 * 5 + 3;
-		seven_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 7 * 5 + 3;
+		seven_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 
 		bit1 = corners & 1ULL << 4 * 5 + 4;
 		bit2 = corners & 1ULL << 4 * 5 + 3;
-		four_orientation = bit1 | ~(bit1 >> 1 | bit2);
+		bit2_pos = 1ULL << 4 * 5 + 3;
+		four_orientation = bit1 | (~(bit1 >> 1 | bit2) & bit2_pos);
 	 } else {
 		// Orientation stays the same for any double move
 		zero_orientation = corners & ZERO_CORI_MASK;
@@ -189,7 +199,7 @@ long L_CORNER_CYCLE(long corners, int direction) {
 	int three_shift;
 	int seven_shift;
 	int four_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		zero_shift = 3 * 5;
 		three_shift = 4 * 5;
@@ -269,7 +279,7 @@ long U_CORNER_CYCLE(long corners, int direction) {
 	int one_shift;
 	int two_shift;
 	int three_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		zero_shift = 5;
 		one_shift = 5;
@@ -285,7 +295,7 @@ long U_CORNER_CYCLE(long corners, int direction) {
 		two_shift = 2 * 5;
 		three_shift = 2 * 5;
 
-		cycled = ((corners & ZERO_CPOS_MASK) | zero_orientation) << zero_shift | ((corners & ONE_CPOS_MASK) | one_orientation) >> one_shift
+		cycled = ((corners & ZERO_CPOS_MASK) | zero_orientation) << zero_shift | ((corners & ONE_CPOS_MASK) | one_orientation) << one_shift
 		| ((corners & TWO_CPOS_MASK) | two_orientation) >> two_shift | ((corners & THREE_CPOS_MASK) | three_orientation) >> three_shift
 		| (corners & ~(ONE_MASK | ZERO_MASK | TWO_MASK | THREE_MASK));
 	} else if (direction == -1) {
@@ -349,7 +359,7 @@ long D_CORNER_CYCLE(long corners, int direction) {
 	int six_shift;
 	int five_shift;
 	int four_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		seven_shift = 5;
 		six_shift = 5;
@@ -395,6 +405,7 @@ long F_CORNER_CYCLE(long corners, int direction) {
 
 	long bit1;
 	long bit2;
+	long bit1_pos;
 
 	long three_orientation;
 	long two_orientation;
@@ -403,19 +414,23 @@ long F_CORNER_CYCLE(long corners, int direction) {
 	if (direction != 2) {
 		bit1 = corners & 1ULL << 3 * 5 + 4;
 		bit2 = corners & 1ULL << 3 * 5 + 3;
-		three_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 3 * 5 + 4;
+		three_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 2 * 5 + 4;
 		bit2 = corners & 1ULL << 2 * 5 + 3;
-		two_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 2 * 5 + 4;
+		two_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 6 * 5 + 4;
 		bit2 = corners & 1ULL << 6 * 5 + 3;
-		six_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 6 * 5 + 4;
+		six_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 7 * 5 + 4;
 		bit2 = corners & 1ULL << 7 * 5 + 3;
-		seven_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 7 * 5 + 4;
+		seven_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 	 } else {
 		// Orientation stays the same for any double move
 		three_orientation = corners & THREE_CORI_MASK;
@@ -429,7 +444,7 @@ long F_CORNER_CYCLE(long corners, int direction) {
 	int two_shift;
 	int six_shift;
 	int seven_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		three_shift = 5;
 		two_shift = 4 * 5;
@@ -475,6 +490,7 @@ long B_CORNER_CYCLE(long corners, int direction) {
 
 	long bit1;
 	long bit2;
+	long bit1_pos;
 
 	long one_orientation;
 	long zero_orientation;
@@ -483,19 +499,23 @@ long B_CORNER_CYCLE(long corners, int direction) {
 	if (direction != 2) {
 		bit1 = corners & 1ULL << 1 * 5 + 4;
 		bit2 = corners & 1ULL << 1 * 5 + 3;
-		one_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 1 * 5 + 4;
+		one_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 0 * 5 + 4;
 		bit2 = corners & 1ULL << 0 * 5 + 3;
-		zero_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 0 * 5 + 4;
+		zero_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 4 * 5 + 4;
 		bit2 = corners & 1ULL << 4 * 5 + 3;
-		four_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 4 * 5 + 4;
+		four_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 
 		bit1 = corners & 1ULL << 5 * 5 + 4;
 		bit2 = corners & 1ULL << 5 * 5 + 3;
-		five_orientation = ~(bit1 | (bit2 << 1)) | bit2;
+		bit1_pos = 1ULL << 5 * 5 + 4;
+		five_orientation = (~(bit1 | (bit2 << 1)) & bit1_pos) | bit2;
 	 } else {
 		// Orientation stays the same for any double move
 		one_orientation = corners & ONE_CORI_MASK;
@@ -509,7 +529,7 @@ long B_CORNER_CYCLE(long corners, int direction) {
 	int zero_shift;
 	int four_shift;
 	int five_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		one_shift = 5;
 		zero_shift = 4 * 5;
@@ -537,7 +557,7 @@ long B_CORNER_CYCLE(long corners, int direction) {
 		// NOTE: This cycle may be different to the cycle in direction == 1 despite looking the same, some << or >> are switched directions
 		cycled = ((corners & ONE_CPOS_MASK) | one_orientation) << one_shift | ((corners & ZERO_CPOS_MASK) | zero_orientation) << zero_shift
 		| ((corners & FOUR_CPOS_MASK) | four_orientation) >> four_shift | ((corners & FIVE_CPOS_MASK) | five_orientation) >> five_shift
-		| (corners & ~(TWO_MASK | THREE_MASK | SIX_MASK | SEVEN_MASK));
+		| (corners & ~(ZERO_MASK | ONE_MASK | FOUR_MASK | FIVE_MASK));
 	} else {
 		std::cerr << "Invalid direction passed to B_Corner_Cycle: " << direction << "\n";
 	}
@@ -556,7 +576,7 @@ long R_EDGE_CYCLE(long edges, int direction) {
 	int five_shift;
 	int nine_shift;
 	int six_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		one_shift = 4 * 5;
 		five_shift = 4 * 5;
@@ -599,7 +619,7 @@ long L_EDGE_CYCLE(long edges, int direction) {
 	int seven_shift;
 	int eleven_shift;
 	int four_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		three_shift = 4 * 5;
 		seven_shift = 4 * 5;
@@ -625,8 +645,8 @@ long L_EDGE_CYCLE(long edges, int direction) {
 		four_shift = 7 * 5;
 
 		// NOTE: This cycle may be different to the cycle in direction == 1 despite looking the same, some << or >> are switched directions
-		cycled = (edges & THREE_MASK) << three_shift | (edges & SEVEN_MASK) << seven_shift
-		| (edges & ELEVEN_MASK) >> eleven_shift | (edges & FOUR_MASK) >> four_shift
+		cycled = (edges & THREE_MASK) << three_shift | (edges & SEVEN_MASK) >> seven_shift
+		| (edges & ELEVEN_MASK) >> eleven_shift | (edges & FOUR_MASK) << four_shift
 		| (edges & ~(SEVEN_MASK | THREE_MASK | ELEVEN_MASK | FOUR_MASK));
 	} else {
 		std::cerr << "Invalid direction passed to L_Edge_Cycle: " << direction << "\n";
@@ -642,7 +662,7 @@ long U_EDGE_CYCLE(long edges, int direction) {
 	int one_shift;
 	int two_shift;
 	int three_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		zero_shift = 1 * 5;
 		one_shift = 1 * 5;
@@ -681,11 +701,11 @@ long U_EDGE_CYCLE(long edges, int direction) {
 long D_EDGE_CYCLE(long edges, int direction) {
 	// 00111'00110'00101'00100'00011'00010'00001'00000;
 	// std::vector<int> D_EDGE_CYCLE {10, 9, 8, 11};
-	int ten_shift;
-	int nine_shift;
-	int eight_shift;
-	int eleven_shift;
-	long cycled;
+	int ten_shift = 0;
+	int nine_shift = 0;
+	int eight_shift = 0;
+	int eleven_shift = 0;
+	long cycled = 2;
 	if (direction == 1) {
 		ten_shift = 1 * 5;
 		nine_shift = 1 * 5;
@@ -726,16 +746,27 @@ long F_EDGE_CYCLE(long edges, int direction) {
 	// std::vector<int> F_EDGE_CYCLE {2, 6, 10, 7}
 	// Cycle positions
 
-	long two_orientation = ~(edges & 1ULL << 2 * 5 + 4);
-	long six_orientation = ~(edges & 1ULL << 6 * 5 + 4);
-	long ten_orientation = ~(edges & 1ULL << 10 * 5 + 4);
-	long seven_orientation = ~(edges & 1ULL << 7 * 5 + 4);
+	long bit_pos;
+	long two_orientation = 0;
+	long six_orientation = 0;
+	long ten_orientation = 0; 
+	long seven_orientation = 0;
+	if (direction != 2) {
+		bit_pos = 1ULL << 2 * 5 + 4;
+		two_orientation = ~(edges & bit_pos) & bit_pos;
+		bit_pos = 1ULL << 6 * 5 + 4;
+		six_orientation = ~(edges & bit_pos) & bit_pos;
+		bit_pos = 1ULL << 10 * 5 + 4;
+		ten_orientation = ~(edges & bit_pos) & bit_pos;
+		bit_pos = 1ULL << 7 * 5 + 4;
+		seven_orientation = ~(edges & bit_pos) & bit_pos;
+	}
 
 	int two_shift;
 	int six_shift;
 	int ten_shift;
 	int seven_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		two_shift = 4 * 5;
 		six_shift = 4 * 5;
@@ -776,16 +807,27 @@ long B_EDGE_CYCLE(long edges, int direction) {
 	// std::vector<int> B_EDGE_CYCLE {0, 4, 8, 5};
 	// Cycle positions
 
-	long zero_orientation = ~(edges & 1ULL << 0 * 5 + 4);
-	long four_orientation = ~(edges & 1ULL << 4 * 5 + 4);
-	long eight_orientation = ~(edges & 1ULL << 8 * 5 + 4);
-	long five_orientation = ~(edges & 1ULL << 5 * 5 + 4);
+	long bit_pos;
+	long zero_orientation = 0;
+	long four_orientation = 0;
+	long eight_orientation = 0;
+	long five_orientation = 0;
+	if (direction != 2) {
+		bit_pos = 1ULL << 0 * 5 + 4;
+		zero_orientation = (~(edges & bit_pos) & bit_pos);
+		bit_pos = 1ULL << 4 * 5 + 4;
+		four_orientation = (~(edges & bit_pos) & bit_pos);
+		bit_pos = 1ULL << 8 * 5 + 4;
+		eight_orientation = (~(edges & bit_pos) & bit_pos);
+		bit_pos = 1ULL << 5 * 5 + 4;
+		five_orientation = (~(edges & bit_pos) & bit_pos);
+	}
 
 	int zero_shift;
 	int four_shift;
 	int eight_shift;
 	int five_shift;
-	long cycled;
+	long cycled = 2;
 	if (direction == 1) {
 		zero_shift = 4 * 5;
 		four_shift = 4 * 5;
