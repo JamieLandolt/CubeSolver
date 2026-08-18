@@ -843,8 +843,8 @@ long B_EDGE_CYCLE(long edges, int direction) {
 		eight_shift = 8 * 5;
 		five_shift = 1 * 5;
 
-		cycled = (edges & ZERO_EPOS_MASK | zero_orientation) << zero_shift | (edges & FOUR_EPOS_MASK | four_orientation) << four_shift
-		| (edges & EIGHT_EPOS_MASK | eight_orientation) >> eight_shift | (edges & FIVE_EPOS_MASK | five_orientation) >> five_shift
+		cycled = (edges & ZERO_MASK) << zero_shift | (edges & FOUR_MASK) << four_shift
+		| (edges & EIGHT_MASK) >> eight_shift | (edges & FIVE_MASK) >> five_shift
 		| (edges & ~(FOUR_MASK | ZERO_MASK | EIGHT_MASK | FIVE_MASK));
 	} else if (direction == -1) {
 		zero_shift = 5 * 5;

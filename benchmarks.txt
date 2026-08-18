@@ -1,207 +1,72 @@
 Scrambles of size 2:
-Scramble Moves: D', R2, B' | Time: 4ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: D, R2 | Time: 10ms | (Phase 1) (Phase 2) R2, D', 
+Scramble Moves: D, B2 | Time: 7ms | (Phase 1) (Phase 2) B2, D', 
+Scramble Moves: F2, D' | Time: 7ms | (Phase 1) (Phase 2) D, F2, 
+Scramble Moves: R2, F2 | Time: 7ms | (Phase 1) (Phase 2) F2, R2, 
+Scramble Moves: B2, D' | Time: 5ms | (Phase 1) (Phase 2) D, B2, 
 
-Average time for scramble size 2: 3ms
+Average time for scramble size 2: 7ms
 
 Scrambles of size 3:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 4ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: D', F2, R2 | Time: 15ms | (Phase 1) (Phase 2) R2, F2, D, 
+Scramble Moves: U', F2, U | Time: 13ms | (Phase 1) (Phase 2) U', F2, U, 
+Scramble Moves: U, D, F2 | Time: 12ms | (Phase 1) (Phase 2) F2, D', U', 
+Scramble Moves: D, B2, D2 | Time: 10ms | (Phase 1) (Phase 2) D2, B2, D', 
+Scramble Moves: U, R2, L2 | Time: 14ms | (Phase 1) (Phase 2) L2, R2, U', 
 
-Average time for scramble size 3: 3ms
+Average time for scramble size 3: 12ms
 
 Scrambles of size 4:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: D, R2, B2, U | Time: 31ms | (Phase 1) (Phase 2) U', B2, R2, D', 
+Scramble Moves: D2, L2, B2, D | Time: 23ms | (Phase 1) (Phase 2) D', B2, L2, D2, 
+Scramble Moves: U2, B2, D', R2 | Time: 58ms | (Phase 1) (Phase 2) R2, D, B2, U2, 
+Scramble Moves: F2, L2, U2, D | Time: 25ms | (Phase 1) (Phase 2) D', U2, L2, F2, 
+Scramble Moves: L2, D2, L2, D' | Time: 27ms | (Phase 1) (Phase 2) D, L2, D2, L2, 
 
-Average time for scramble size 4: 3ms
+Average time for scramble size 4: 32ms
 
 Scrambles of size 5:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: D', F2, U, D, R2 | Time: 304ms | (Phase 1) (Phase 2) R2, D', U', F2, D, 
+Scramble Moves: U, R2, U', D2, B2 | Time: 208ms | (Phase 1) (Phase 2) B2, D2, U, R2, U', 
+Scramble Moves: F2, L2, F2, U, D' | Time: 111ms | (Phase 1) (Phase 2) D, U', F2, L2, F2, 
+Scramble Moves: L2, U2, D, B2, D2 | Time: 58ms | (Phase 1) (Phase 2) D2, B2, D', U2, L2, 
+Scramble Moves: D2, L2, U2, F2, U2 | Time: 153ms | (Phase 1) (Phase 2) U2, F2, U2, L2, D2, 
 
-Average time for scramble size 5: 3ms
+Average time for scramble size 5: 166ms
 
 Scrambles of size 6:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: B2, D2, B2, D2, L2, B' | Time: 312ms | (Phase 1) B' | (Phase 2) 
+Scramble Moves: L2, U2, B2, L2, U2, R | Time: 146ms | (Phase 1) R' | (Phase 2) U2, L2, B2, U2, L2, 
+Scramble Moves: F2, U, D2, F2, U, L' | Time: 315ms | (Phase 1) L' | (Phase 2) 
+Scramble Moves: D, F2, U2, D', B2, R | Time: 197ms | (Phase 1) R' | (Phase 2) B2, D, U2, F2, D', 
+Scramble Moves: R2, U', R2, U, B2, R | Time: 208ms | (Phase 1) R' | (Phase 2) B2, U', R2, U, R2, 
 
-Average time for scramble size 6: 3ms
+Average time for scramble size 6: 235ms
 
 Scrambles of size 7:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: B2, D', B2, D2, F2, D', B | Time: 313ms | (Phase 1) B' | (Phase 2) 
+Scramble Moves: D2, F2, U', D2, L2, D', R2 | Time: 310ms | (Phase 1) (Phase 2) 
+Scramble Moves: D, L2, U2, D2, F2, U, D' | Time: 314ms | (Phase 1) (Phase 2) 
+Scramble Moves: U, F2, D', R2, D, R', D | Time: 317ms | (Phase 1) D', R' | (Phase 2) 
+Scramble Moves: R2, D2, F2, D', F2, D2, F | Time: 315ms | (Phase 1) F' | (Phase 2) 
 
-Average time for scramble size 7: 3ms
+Average time for scramble size 7: 313ms
 
 Scrambles of size 8:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: B2, D, B2, U', B2, L', U, F' | Time: 338ms | (Phase 1) F, U', L' | (Phase 2) 
+Scramble Moves: D, R2, U, D', B2, L2, U2, F' | Time: 319ms | (Phase 1) F' | (Phase 2) 
+Scramble Moves: U2, F2, D2, B2, D2, F', D2, B' | Time: 324ms | (Phase 1) B, D2, F' | (Phase 2) 
+Scramble Moves: U', D, L2, U, D2, F', L2, U' | Time: 344ms | (Phase 1) U, L2, F' | (Phase 2) 
+Scramble Moves: D', F2, U', D2, B2, U2, B, D2 | Time: 315ms | (Phase 1) D2, B' | (Phase 2) 
 
-Average time for scramble size 8: 3ms
+Average time for scramble size 8: 328ms
 
 Scrambles of size 9:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
+Scramble Moves: D, L2, B2, D2, R2, D', R, B2, U | Time: 341ms | (Phase 1) U', B2, R' | (Phase 2) 
+Scramble Moves: U2, L2, U, D', B2, U, R', U', B' | Time: 325ms | (Phase 1) B, U, R' | (Phase 2) 
+Scramble Moves: L2, D2, R2, U, B2, D2, B2, L', U' | Time: 316ms | (Phase 1) U, L' | (Phase 2) 
+Scramble Moves: D2, B2, R2, B2, D', L', D, L2, F2 | Time: 489ms | (Phase 1) F2, L2, D', L' | (Phase 2) 
+Scramble Moves: R2, D, B2, U2, D', F2, B, D', F | Time: 329ms | (Phase 1) F', D, B' | (Phase 2) 
 
-Average time for scramble size 9: 3ms
-
-Scrambles of size 10:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 10: 3ms
-
-Scrambles of size 11:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 11: 3ms
-
-Scrambles of size 12:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 12: 3ms
-
-Scrambles of size 13:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 13: 3ms
-
-Scrambles of size 14:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 14: 3ms
-
-Scrambles of size 15:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 15: 3ms
-
-Scrambles of size 16:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 16: 3ms
-
-Scrambles of size 17:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 17: 3ms
-
-Scrambles of size 18:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 18: 3ms
-
-Scrambles of size 19:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 19: 3ms
-
-Scrambles of size 20:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 20: 3ms
-
-Scrambles of size 21:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 21: 3ms
-
-Scrambles of size 22:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 22: 3ms
-
-Scrambles of size 23:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 23: 3ms
-
-Scrambles of size 24:
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-Scramble Moves: D', R2, B' | Time: 3ms | (Phase 1) B' | (Phase 2) B2, R2, D, 
-
-Average time for scramble size 24: 3ms
+Average time for scramble size 9: 360ms
 

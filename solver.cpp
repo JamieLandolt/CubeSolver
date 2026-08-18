@@ -28,8 +28,10 @@ private:
 
 	std::mt19937 gen;
 	std::uniform_int_distribution<> dist;
+	std::uniform_int_distribution<> dom_dist;
 
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
+	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
 	std::unordered_map<char,std::function<long(long,int)>> corner_cycles = {{'R', R_CORNER_CYCLE}, {'L', L_CORNER_CYCLE}, {'U', U_CORNER_CYCLE},
 								 {'D', D_CORNER_CYCLE}, {'F', F_CORNER_CYCLE}, {'B', B_CORNER_CYCLE}};
@@ -46,13 +48,21 @@ public:
 		std::random_device rd;
 		gen = std::mt19937(rd());
 		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
+		dom_dist = std::uniform_int_distribution<>(0, DOMINO_MOVES.size() - 1);
 	}
 
-	std::pair<std::vector<std::string>,std::pair<long,long>> random_scramble(int scramble_size) {
+	std::pair<std::vector<std::string>,std::pair<long,long>> random_scramble(int scramble_size, int DEPTH_PHASE_1) {
+		// Currently implemented so that it will make only scrambles that the solver can search far enough to find
+		// Based on DEPTH_PHASE_1&2
 		scramble_moves.clear();
 		std::string last = "";
 		for (int i = 0; i < scramble_size; i++) {
-			std::string move = MOVES[dist(gen)];
+			std::string move;
+			if (i < DEPTH_PHASE_1) {
+				move = DOMINO_MOVES[dom_dist(gen)];
+			} else {
+				move = MOVES[dist(gen)];
+			}
 			if (i != 0 && banned_next_moves[move[0]].count(last[0])) {
 				i--;
 				continue;
@@ -149,8 +159,6 @@ private:
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	int DEPTH_PHASE_1 = 5;
-	int DEPTH_PHASE_2 = 5;
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
 	std::stack<int> depths;
@@ -168,6 +176,9 @@ private:
 									{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 	
 public:
+	int DEPTH_PHASE_1 = 5;
+	int DEPTH_PHASE_2 = 5;
+
 	Solver(Cube& external_cube) : cube(external_cube) {}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
@@ -230,6 +241,14 @@ public:
 				long edges = edge_states.top();
 
 		 		std::list<std::string> state_moves(moves.top());
+				for (std::string s : state_moves) {
+					file << s << ", ";
+				}
+				file << "\n";
+				if (state_moves.size() == 4 && state_moves.front() == "B2" && *next(state_moves.begin()) == "L2" 
+					&& *next(next(state_moves.begin())) == "U") {
+					// std::cout << "HERE\n";
+				}
 
 				depths.pop();
 				moves.pop();
@@ -395,15 +414,14 @@ void benchmark_solves() {
 
 	Cube cube;
 	Solver solver = Solver(cube);
-	for (int scramble_size = 2; scramble_size < 25; scramble_size++) {
+	for (int scramble_size = 2; scramble_size < solver.DEPTH_PHASE_1 + solver.DEPTH_PHASE_2; scramble_size++) {
 		file << "Scrambles of size " << scramble_size << ":\n";
 		std::cout << "Scrambles of size " << scramble_size << ":\n";
 
 		for (int scr_num = 0; scr_num < 5; scr_num++) {
 			std::cout << "Scramble: " << scr_num << "\n";
-			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size);
-			std::vector<std::string> scramble = {"D'", "R2", "B'"};
-			// std::vector<std::string> scramble = p.first;
+			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
+			std::vector<std::string> scramble = p.first;
 			std::pair<long,long> state = p.second;
 
 			int i;
@@ -440,6 +458,7 @@ void benchmark_solves() {
 				}
 			}
 
+			i = 0;
 			file << "(Phase 2) ";
 			for (std::string mv : p2_sol) {
 				if (i < p2_sol.size()) {
@@ -463,9 +482,9 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	// benchmark_solves();
+	benchmark_solves();
 	
-	std::vector<std::string> scramble = {"D'", "R2", "B'"};
-	solve(scramble);
+	// std::vector<std::string> scramble = {"F", "U'", "L2", "B2"};
+	// solve(scramble);
 	return 0;
 }
