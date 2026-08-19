@@ -5,9 +5,11 @@
 #include <list>
 #include <vector>
 #include <stack>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <cmath>
 
 #include <iostream>
 #include <fstream>
@@ -23,6 +25,8 @@ private:
 	// Hierarchy: WY/GB/RO TB/FB/RL
 	long CORNERS_SOLVED = 0b00111'00110'00101'00100'00011'00010'00001'00000;
 	long EDGES_SOLVED = 0b01011'01010'01001'01000'00111'00110'00101'00100'00011'00010'00001'00000;
+
+	std::pair<std::vector<int>, std::vector<int>> orientations;
 
 	std::vector<std::string> scramble_moves;
 
@@ -49,6 +53,7 @@ public:
 		gen = std::mt19937(rd());
 		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
 		dom_dist = std::uniform_int_distribution<>(0, DOMINO_MOVES.size() - 1);
+		orientations = generate_orientations();
 	}
 
 	std::pair<std::vector<std::string>,std::pair<long,long>> random_scramble(int scramble_size, int DEPTH_PHASE_1) {
@@ -151,6 +156,98 @@ public:
 		}
 		std::cout << "\n";
 	}
+
+	std::pair<int,int> ori_to_int(long corners, long edges) {
+		// Make a base 3 and 2 number from the orientations
+		int corner_b3 = 0;
+		int edge_b2 = 0;
+		for (int i = 0; i < 11; i++) {
+			if (i < 7) {
+				corner_b3 += pow(3, i) * ((corners & (0b11000ULL << i * 5)) >> i * 5 + 3);
+			}
+			edge_b2 += pow(2, i) * ((edges & (0b10000ULL << i * 5)) >> i * 5 + 4);
+		}
+		return std::make_pair(corner_b3, edge_b2);
+	}
+
+	std::pair<int,int> ori_to_int(std::pair<long,long> state) {
+		// Make a base 3 and 2 number from the orientations
+		int corner_b3 = 0;
+		int edge_b2 = 0;
+		for (int i = 0; i < 11; i++) {
+			if (i < 7) {
+				corner_b3 += pow(3, i) * ((state.first & (0b11000ULL << i * 5)) >> i * 5 + 3);
+			}
+			edge_b2 += pow(2, i) * ((state.second & (0b10000ULL << i * 5)) >> i * 5 + 4);
+		}
+		return std::make_pair(corner_b3, edge_b2);
+	}
+
+	int pow(int x, int n) {
+		int ans = 1;
+		for (int i = 0; i < n; i++) {
+			ans *= x;
+		}
+		return ans;
+	}
+
+	std::pair<std::vector<int>, std::vector<int>> generate_orientations() {
+		std::pair<long,long> solved_state = get_solved_state();
+
+		int completed = 0;
+		int num_corner_orientations = pow(3, 7);
+		int num_edge_orientations = pow(2, 11);
+		std::vector<int> corner_orientations(num_corner_orientations, -1);
+		std::vector<int> edge_orientations(num_edge_orientations, -1);
+
+		std::queue<std::pair<long,long>> states;
+		states.push(solved_state);
+
+		auto [corners_b3, edges_b2] = ori_to_int(solved_state);
+		if (corner_orientations.at(corners_b3) == -1) {
+			corner_orientations[corners_b3] = 0;
+			completed++;
+		}
+		if (edge_orientations.at(edges_b2) == -1) {
+			edge_orientations[edges_b2] = 0;
+			completed++;
+		}
+
+		std::queue<int> moves;
+		moves.push(0);
+
+		// Find the minimum moves it takes to correctly orient each corner by making every sequence of moves
+		while (completed < num_corner_orientations + num_edge_orientations) {
+			std::pair<long,long> state = states.front();
+			int num_moves = moves.front();
+
+			states.pop();
+			moves.pop();
+
+			for (std::string mv : MOVES) {
+				std::pair<long,long> next_state = move(mv, state.first, state.second);
+				auto [corner_hash, edge_hash] = ori_to_int(next_state);
+				// If there's a new orientation, explore it
+				if (corner_orientations.at(corner_hash) == -1 || edge_orientations.at(edge_hash) == -1) {
+					states.push(next_state);
+					moves.push(num_moves + 1);
+
+					// If we haven't stored that corner/edge state yet store the min moves to get to it
+					if (corner_orientations.at(corner_hash) == -1) {
+						corner_orientations[corner_hash] = num_moves + 1;
+						completed++;
+					}
+					if (edge_orientations.at(edge_hash) == -1) {
+						edge_orientations[edge_hash] = num_moves + 1;
+						completed++;
+					}
+
+				}
+			}
+		}
+
+		return std::make_pair(corner_orientations, edge_orientations);
+	}
 };
 
 class Solver {
@@ -171,13 +268,13 @@ private:
 	Cube& cube;
 
 	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
-									{'D', std::unordered_set<char>{'D'}},
-									{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
-									{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
+								{'D', std::unordered_set<char>{'D'}},
+								{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
+								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 	
 public:
-	int DEPTH_PHASE_1 = 5;
-	int DEPTH_PHASE_2 = 5;
+	int DEPTH_PHASE_1 = 9;
+	int DEPTH_PHASE_2 = 9;
 
 	Solver(Cube& external_cube) : cube(external_cube) {}
 
@@ -226,7 +323,7 @@ public:
 	void dfs(std::vector<std::string> scramble) {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
-		for (int search_depth = 0; search_depth < MAX_DEPTH; search_depth++) {
+		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
 			
 			// Reset dfs state
@@ -241,14 +338,6 @@ public:
 				long edges = edge_states.top();
 
 		 		std::list<std::string> state_moves(moves.top());
-				for (std::string s : state_moves) {
-					file << s << ", ";
-				}
-				file << "\n";
-				if (state_moves.size() == 4 && state_moves.front() == "B2" && *next(state_moves.begin()) == "L2" 
-					&& *next(next(state_moves.begin())) == "U") {
-					// std::cout << "HERE\n";
-				}
 
 				depths.pop();
 				moves.pop();
@@ -271,7 +360,7 @@ public:
 				if (phase_complete == 1 and SOLVER_PHASE == 0) {
 					SOLVER_PHASE++;
 					move_space = DOMINO_MOVES;
-					search_depth = 0;
+					search_depth = 1;
 					MAX_DEPTH = DEPTH_PHASE_2;
 
 					std::cout << "Domino reduction complete with: ";
@@ -309,11 +398,21 @@ public:
 
 				// Search child nodes
 				for (std::string move : move_space) {
+					// Based on the orientation of the corners and edges
+					// Finds the minimum moves needed to solve the case
+					// Works for both Phase 1 & 2
+					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+
+					// If it takes more moves than are left in the search to solve, don't bother searching
+					if (std::max(min_sol_moves.first, min_sol_moves.second) > search_depth - depth) {
+						break;
+					}
+
+					// Avoid moving the same side twice in a row
 					if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
-						// Avoid moving the same side twice in a row
 						continue;
 					}
-					if (depth <= search_depth) {
+					if (depth < search_depth) {
 						std::list<std::string> next_state_moves = state_moves;
 						std::pair<long,long> state = cube.move(move, corners, edges);
 							
@@ -483,8 +582,6 @@ void benchmark_solves() {
 
 int main(int argc, char** argv) {
 	benchmark_solves();
-	
-	// std::vector<std::string> scramble = {"F", "U'", "L2", "B2"};
-	// solve(scramble);
+
 	return 0;
 }
