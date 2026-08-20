@@ -596,66 +596,62 @@ void benchmark_solves() {
 
 	Cube cube;
 	Solver solver = Solver(cube);
-	for (int scramble_size = 2; scramble_size < solver.DEPTH_PHASE_1 + solver.DEPTH_PHASE_2; scramble_size++) {
-		file << "Scrambles of size " << scramble_size << ":\n";
-		std::cout << "Scrambles of size " << scramble_size << ":\n";
+	int scramble_size = 25;
+	for (int scramble_num = 0; scramble_num < 100; scramble_num++) {
+		std::cout << "Scramble " << scramble_num << ":\n";
 
-		for (int scr_num = 0; scr_num < 5; scr_num++) {
-			std::cout << "Scramble: " << scr_num << "\n";
-			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
-			std::vector<std::string> scramble = p.first;
-			std::pair<long,long> state = p.second;
+		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
+		std::vector<std::string> scramble = p.first;
+		std::pair<long,long> state = p.second;
 
-			int i;
-			file << "Scramble Moves: ";
-			for (i = 0; i < scramble.size() - 1; i++) {
-				file << scramble[i] << ", ";
+		int i;
+		std::cout << "Scramble Moves: ";
+		for (i = 0; i < scramble.size() - 1; i++) {
+			std::cout << scramble[i] << ", ";
+		}
+		std::cout << scramble[i] << " | ";
+
+		solver.reset_full();
+		solver.reset_dfs(scramble);
+
+		// Time Solve
+		timer.start();
+		solver.dfs(scramble);
+		auto solve_time = timer.stop(scramble_size);
+
+		std::cout << "Time: " << solve_time.count() << "ms | ";
+
+		// If a non middle layer edge is in a middle layer edge position
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+		std::list<std::string> p1_sol = solution.first;
+		std::list<std::string> p2_sol = solution.second;
+
+		// Write moves to file
+		i = 0;
+		std::cout << "(Phase 1) ";
+		for (std::string mv : p1_sol) {
+			i++;
+			if (i < p1_sol.size()) {
+				std::cout << mv << ", ";
+			} else {
+				std::cout << mv << " | ";
 			}
-			file << scramble[i] << " | ";
-
-			solver.reset_full();
-			solver.reset_dfs(scramble);
-
-			// Time Solve
-			timer.start();
-			solver.dfs(scramble);
-			auto solve_time = timer.stop(scramble_size);
-
-			file << "Time: " << solve_time.count() << "ms | ";
-
-			// If a non middle layer edge is in a middle layer edge position
-			std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
-			std::list<std::string> p1_sol = solution.first;
-			std::list<std::string> p2_sol = solution.second;
-
-			// Write moves to file
-			i = 0;
-			file << "(Phase 1) ";
-			for (std::string mv : p1_sol) {
-				i++;
-				if (i < p1_sol.size()) {
-					file << mv << ", ";
-				} else {
-					file << mv << " | ";
-				}
-			}
-
-			i = 0;
-			file << "(Phase 2) ";
-			for (std::string mv : p2_sol) {
-				if (i < p2_sol.size()) {
-					file << mv << ", ";
-				} else {
-					file << mv;
-				}
-			}
-			file << "\n";
-
-			file.flush();
 		}
 
-		file << "\n";
-		file << "Average time for scramble size " << scramble_size << ": " << timer.get_avg_times()[scramble_size] << "ms\n\n";
+		i = 0;
+		std::cout << "(Phase 2) ";
+		for (std::string mv : p2_sol) {
+			if (i < p2_sol.size()) {
+				std::cout << mv << ", ";
+			} else {
+				std::cout << mv;
+			}
+		}
+		std::cout << "\n";
+
+		file.flush();
+
+		std::cout << "\n";
 	}
 
 	if (!file.good()) {
