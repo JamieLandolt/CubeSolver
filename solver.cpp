@@ -26,8 +26,6 @@ private:
 	long CORNERS_SOLVED = 0b00111'00110'00101'00100'00011'00010'00001'00000;
 	long EDGES_SOLVED = 0b01011'01010'01001'01000'00111'00110'00101'00100'00011'00010'00001'00000;
 
-	std::pair<std::vector<int>, std::vector<int>> orientations;
-
 	std::vector<std::string> scramble_moves;
 
 	std::mt19937 gen;
@@ -53,7 +51,6 @@ public:
 		gen = std::mt19937(rd());
 		dist = std::uniform_int_distribution<>(0, MOVES.size() - 1);
 		dom_dist = std::uniform_int_distribution<>(0, DOMINO_MOVES.size() - 1);
-		orientations = generate_orientations();
 	}
 
 	std::pair<std::vector<std::string>,std::pair<long,long>> random_scramble(int scramble_size, int DEPTH_PHASE_1) {
@@ -332,6 +329,10 @@ private:
 
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
 
+	std::pair<std::vector<int>, std::vector<int>> orientations;
+	std::vector<int> corner_orientations;
+	std::vector<int> edge_orientations;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
@@ -345,8 +346,11 @@ public:
 	int DEPTH_PHASE_2 = 12;
 
 	Solver(Cube& external_cube) : cube(external_cube) {
-        solution_paths = cube.generate_solution_lookup(9);
-    }
+		solution_paths = cube.generate_solution_lookup(7);
+		orientations = cube.generate_orientations();
+		corner_orientations = orientations.first;
+		edge_orientations = orientations.first;
+	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
 		return solution;
@@ -475,7 +479,7 @@ public:
 					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 
 					// If it takes more moves than are left in the search to solve, don't bother searching
-					if (std::max(min_sol_moves.first, min_sol_moves.second) > search_depth - depth) {
+					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
 					}
 
@@ -660,10 +664,10 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	// benchmark_solves();
-    std::vector<std::string> scramble = {"R2", "U", "F2", "D", "B2", "U2", "D2", "B2", "U'", "B2", "L2", "F2", "R2", "L", "F2", "B'"};
+	benchmark_solves();
+	std::vector<std::string> scramble = {"R'"};
 
-    solve(scramble);
+	// solve(scramble);
 
 	return 0;
 }
