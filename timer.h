@@ -5,9 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <numeric>
-
-class Timer {
-private:
+class Timer { private:
         std::chrono::high_resolution_clock::time_point start_time;
         std::unordered_map<int,std::vector<std::chrono::milliseconds>> times;
 public:
@@ -27,18 +25,10 @@ public:
                 return times;
         }
 
-        long avg(std::vector<std::chrono::milliseconds> ts) {
-                std::chrono::milliseconds base{0};
-                std::chrono::milliseconds total = std::accumulate(ts.begin(), ts.end(), base);
-                return (total / ts.size()).count();
-        }
 
-        std::unordered_map<int,long> get_avg_times() {
-                std::unordered_map<int,long> avg_times;
-                for (const auto& [size, times] : times) {
-                        avg_times[size] = avg(times);
-                }
-                return avg_times;
+        long avg(std::vector<long> ts) {
+                long total = std::accumulate(ts.begin(), ts.end(), 0ULL);
+                return total / ts.size();
         }
 };
 

@@ -321,10 +321,7 @@ private:
 
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
-	std::stack<int> depths;
-	std::stack<std::list<std::string>> moves;
-	std::stack<long> corner_states;
-	std::stack<long> edge_states;
+	std::stack<DFSEntry> states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
@@ -372,31 +369,21 @@ public:
 	void reset_dfs(std::vector<std::string> scramble_moves) {
 		// Auto resets to the DR state if a solution for that has been found (AKA solution.first is not empty)
 		// Clear all stacks
-		std::stack<int> empty_depths;
-		std::swap(depths, empty_depths);
-			
-		std::stack<std::list<std::string>> empty_moves;
-		std::swap(moves, empty_moves);
+		std::stack<DFSEntry> empty_states;
+		std::swap(states, empty_states);
 
-		std::stack<long> empty_corners;
-		std::swap(corner_states, empty_corners);
-
-		std::stack<long> empty_edges;
-		std::swap(edge_states, empty_edges);
-
-		visited.clear();
-		
 		std::pair<long,long> state = cube.to_phase(scramble_moves, solution.first);
 
-		depths.push(0);
-		moves.push(std::list<std::string>{});
-		corner_states.push(state.first);
-		edge_states.push(state.second);
+		visited.clear();
+        visited.insert(state);
+
+		states.push(DFSEntry{nullptr, state.first, state.second, "", 0});
 	}
 
 	void dfs(std::vector<std::string> scramble) {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
+
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
 			
@@ -404,29 +391,24 @@ public:
 			reset_dfs(scramble);
 
 			std::ofstream file("debug.txt");
-			while (depths.size() > 0) {
+			while (states.size() > 0) {
 				// Get next node to visit
-				int depth = depths.top();
 
-				long corners = corner_states.top();
-				long edges = edge_states.top();
+		 		DFSEntry dfs_state(states.top());
 
-		 		std::list<std::string> state_moves(moves.top());
+				int depth = dfs_state.depth;
+                std::string move = dfs_state.move;
+				long corners = dfs_state.corners;
+				long edges = dfs_state.edges;
 
-				depths.pop();
-				moves.pop();
-				corner_states.pop();
-				edge_states.pop();
-
-				// Hash and store visited state
-				visited.insert({corners, edges});
+				states.pop();
 				
 				// Check for target state
 				int phase_complete = check_state(corners, edges);
 
 				if (phase_complete == 2) {
 					// Solved state has been found
-					solution.second = extend(state_moves, solution_paths[std::make_pair(corners, edges)]);
+					solution.second = combine(dfs_state, solution_paths[std::make_pair(corners, edges)]);
 					return;
 				}
 
@@ -437,37 +419,17 @@ public:
 					search_depth = 1;
 					MAX_DEPTH = DEPTH_PHASE_2;
 
-					std::cout << "Domino reduction complete with: ";
-					for (std::string s : state_moves) {
-						std::cout << s << ", ";
-					}
-					std::cout << "\n";
-
 					// Save moves to get to that state
-					solution.first = state_moves;
-					state_moves.clear();
+					solution.first = get_moves(&dfs_state);
 
 					// Clear all stacks
-					std::stack<int> empty_depths;
-					std::swap(depths, empty_depths);
-					
-					std::stack<std::list<std::string>> empty_moves;
-					std::swap(moves, empty_moves);
-
-
-					std::stack<long> empty_corners;
-					std::swap(corner_states, empty_corners);
-
-					std::stack<long> empty_edges;
-					std::swap(edge_states, empty_edges);
+                    std::stack<DFSEntry> empty_states;
+                    std::swap(states, empty_states);
 
 					visited.clear();
+					visited.insert(std::make_pair(corners, edges));
 
-					// Setup next phase of search to start from domino reduced state
-					depths.push(0);
-					moves.push(std::list<std::string>{});
-					corner_states.push(corners);
-					edge_states.push(edges);
+                    states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
 					continue;
 				}
 
@@ -484,22 +446,17 @@ public:
 					}
 
 					// Avoid moving the same side twice in a row
-					if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
+					if (depth > 0 && banned_next_moves[dfs_state.move[0]].count(move[0])) {
 						continue;
 					}
 					if (depth < search_depth) {
-						std::list<std::string> next_state_moves = state_moves;
 						std::pair<long,long> state = cube.move(move, corners, edges);
 							
 						// Store if we haven't been in the state before
 						if (!visited.count(state)) {
-							depths.push(depth + 1);
-							next_state_moves.push_back(move);
-							moves.push(next_state_moves);
-
-							// Store new corner/edge states
-							corner_states.push(state.first);
-							edge_states.push(state.second);
+                            visited.insert(state);
+							DFSEntry next_state_moves = DFSEntry{&dfs_state, corners, edges, move, depth + 1};
+							states.push(next_state_moves);
 						}
 					}
 				}
@@ -547,10 +504,30 @@ public:
 		return 0;
 	}
 
-    std::list<std::string> extend(std::list<std::string> sol, PathEntry path) {
+    std::list<std::string> combine(DFSEntry sol_p2, PathEntry sol_p3) {
+        std::list<std::string> solution = get_moves(&sol_p2);
+        solution.reverse();
+        std::list<std::string> solution_p3 = get_moves(sol_p3);
+        
+        solution.splice(solution.end(), solution_p3);
+        return solution;
+    }
+
+
+    std::list<std::string> get_moves(PathEntry path) {
+        std::list<std::string> sol;
         while (path.move.size()) {
             sol.push_back(path.move);
             path = solution_paths[path.parent_state];
+        }
+        return sol;
+    }
+
+    std::list<std::string> get_moves(DFSEntry* path) {
+        std::list<std::string> sol;
+        while (path->move.size()) {
+            sol.push_back(path->move);
+            path = path->parent_state;
         }
         return sol;
     }
@@ -586,18 +563,14 @@ void solve(std::vector<std::string> scramble) {
 }
 
 void benchmark_solves() {
-	Timer timer = Timer();
-	// Setup Output File
-	std::ofstream file("benchmarks.txt");
-
-	if (!file) {
-		std::cerr << "Failed to open file\n";
-	}
-
-	Cube cube;
+    Cube cube;
 	Solver solver = Solver(cube);
+	Timer timer = Timer();
+
+    std::vector<long> times;
+
 	int scramble_size = 25;
-	for (int scramble_num = 0; scramble_num < 100; scramble_num++) {
+	for (int scramble_num = 0; scramble_num < 10; scramble_num++) {
 		std::cout << "Scramble " << scramble_num << ":\n";
 
 		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
@@ -619,14 +592,15 @@ void benchmark_solves() {
 		solver.dfs(scramble);
 		auto solve_time = timer.stop(scramble_size);
 
-		std::cout << "Time: " << solve_time.count() << "ms | ";
+        long time = solve_time.count();
+		std::cout << "Time: " << time << "ms | ";
+        times.push_back(time);
 
 		// If a non middle layer edge is in a middle layer edge position
 		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
 		std::list<std::string> p1_sol = solution.first;
 		std::list<std::string> p2_sol = solution.second;
 
-		// Write moves to file
 		i = 0;
 		std::cout << "(Phase 1) ";
 		for (std::string mv : p1_sol) {
@@ -647,16 +621,9 @@ void benchmark_solves() {
 				std::cout << mv;
 			}
 		}
-		std::cout << "\n";
-
-		file.flush();
-
-		std::cout << "\n";
+		std::cout << "\n\n";
 	}
-
-	if (!file.good()) {
-		std::cerr << "Write failed\n";
-	}
+    std::cout << "Average Solve Time: " << timer.avg(times) << std::endl;
 }
 
 int main(int argc, char** argv) {

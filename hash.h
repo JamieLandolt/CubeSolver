@@ -19,4 +19,12 @@ struct PathEntry {
     std::string move;
 };
 
+struct DFSEntry {
+    DFSEntry* parent_state;
+    long corners;
+    long edges;
+    std::string move;
+    int depth;
+};
+
 #endif
