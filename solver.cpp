@@ -264,10 +264,15 @@ public:
 	}
 
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> generate_solution_lookup(int MAX_SOL_SEARCH_DEPTH) {
+        std::cout << "Generating Phase 3 steps...\n";
 		std::pair<long,long> solved_state = get_solved_state();
 
 		std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
-		solution_paths.reserve(25000000);
+        // Preallocate enough space to never need to rehash everything, for MAX_SOL_SEARCH_DEPTH = 9 this is good
+        if (MAX_SOL_SEARCH_DEPTH != 9) {
+        std::cerr << "CHANGE solution_paths RESERVE VAL\n";
+        }
+		solution_paths.reserve(28000000);
 		PathEntry solved_path{solved_state, ""};
 		solution_paths[solved_state] = solved_path;
 
@@ -283,9 +288,6 @@ public:
 			std::pair<long,long> state = states.front();
 			std::string last_move = last_moves.front();
 			int depth = depths.front();
-			if (solution_paths.size() % 1000 == 0) {
-				std::cout << solution_paths.size() << "\n";
-			}
 
 			states.pop();
 			last_moves.pop();
@@ -308,7 +310,8 @@ public:
 				}
 			}
 		}
-
+        
+        std::cout << "Finished generating Phase 3 steps.\n";
 		return solution_paths;
 	}
 };
@@ -327,6 +330,8 @@ private:
 	std::stack<long> edge_states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
+	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
@@ -337,9 +342,11 @@ private:
 	
 public:
 	int DEPTH_PHASE_1 = 12;
-	int DEPTH_PHASE_2 = 18;
+	int DEPTH_PHASE_2 = 12;
 
-	Solver(Cube& external_cube) : cube(external_cube) {}
+	Solver(Cube& external_cube) : cube(external_cube) {
+        solution_paths = cube.generate_solution_lookup(9);
+    }
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
 		return solution;
@@ -415,7 +422,7 @@ public:
 
 				if (phase_complete == 2) {
 					// Solved state has been found
-					solution.second = state_moves;
+					solution.second = extend(state_moves, solution_paths[std::make_pair(corners, edges)]);
 					return;
 				}
 
@@ -509,7 +516,7 @@ public:
 		int num_corners = 8;
 		int num_edges = 12;
 
-		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
+		if (solution_paths.count(std::make_pair(corners, edges))) {
 			return 2;
 		}
 
@@ -535,6 +542,14 @@ public:
 
 		return 0;
 	}
+
+    std::list<std::string> extend(std::list<std::string> sol, PathEntry path) {
+        while (path.move.size()) {
+            sol.push_back(path.move);
+            path = solution_paths[path.parent_state];
+        }
+        return sol;
+    }
 };
 
 
@@ -646,8 +661,9 @@ void benchmark_solves() {
 
 int main(int argc, char** argv) {
 	// benchmark_solves();
-	Cube cube;
-	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths = cube.generate_solution_lookup(9);
+    std::vector<std::string> scramble = {"R2", "U", "F2", "D", "B2", "U2", "D2", "B2", "U'", "B2", "L2", "F2", "R2", "L", "F2", "B'"};
+
+    solve(scramble);
 
 	return 0;
 }
