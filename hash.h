@@ -14,4 +14,9 @@ struct StateHash {
     }
 };
 
+struct PathEntry {
+    std::pair<long,long> parent_state;
+    std::string move;
+};
+
 #endif

@@ -191,7 +191,7 @@ public:
 		return ans;
 	}
 
-	std::pair<std::vector<int>, std::vector<int>> generate_orientations() {
+	std::pair<std::vector<int>,std::vector<int>> generate_orientations() {
 		std::pair<long,long> solved_state = get_solved_state();
 
 		int completed = 0;
@@ -248,6 +248,69 @@ public:
 
 		return std::make_pair(corner_orientations, edge_orientations);
 	}
+
+	std::string invert_move(std::string move) {
+		// Inverts domino reduction moves
+		if (move[0] == 'U' || move[0] == 'D') {
+			if (move.size() == 1) {
+				return std::string(1, move[0]) + '\'';
+			} else if (move[1] == '\'') {
+				return std::string(1, move[0]);
+			} else {
+				return move;
+			}
+		}
+		return move;
+	}
+
+	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> generate_solution_lookup(int MAX_SOL_SEARCH_DEPTH) {
+		std::pair<long,long> solved_state = get_solved_state();
+
+		std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
+		solution_paths.reserve(25000000);
+		PathEntry solved_path{solved_state, ""};
+		solution_paths[solved_state] = solved_path;
+
+		std::queue<std::pair<long,long>> states;
+		std::queue<std::string> last_moves;
+		std::queue<int> depths;
+
+		states.push(solved_state);
+		last_moves.push("");
+		depths.push(0);
+
+		while (states.size()) {
+			std::pair<long,long> state = states.front();
+			std::string last_move = last_moves.front();
+			int depth = depths.front();
+			if (solution_paths.size() % 1000 == 0) {
+				std::cout << solution_paths.size() << "\n";
+			}
+
+			states.pop();
+			last_moves.pop();
+			depths.pop();
+
+			for (std::string mv : DOMINO_MOVES) {
+				std::pair<long,long> next_state = move(mv, state.first, state.second);
+				// Avoid moving the same side twice in a row to reduce the search space
+				if (last_move.size() > 0 && banned_next_moves[last_move[0]].count(mv[0]) 
+					|| depth > MAX_SOL_SEARCH_DEPTH - 1) {
+					continue;
+				}
+				// If we haven't seen the next_state yet add it for exploration and store how to get from there to the solved state
+				if (!solution_paths.count(next_state)) {
+					states.push(next_state);
+					last_moves.push(mv);
+					depths.push(depth + 1);
+
+					solution_paths[next_state] = PathEntry{state, invert_move(mv)};
+				}
+			}
+		}
+
+		return solution_paths;
+	}
 };
 
 class Solver {
@@ -273,8 +336,8 @@ private:
 								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 	
 public:
-	int DEPTH_PHASE_1 = 9;
-	int DEPTH_PHASE_2 = 9;
+	int DEPTH_PHASE_1 = 12;
+	int DEPTH_PHASE_2 = 18;
 
 	Solver(Cube& external_cube) : cube(external_cube) {}
 
@@ -379,6 +442,7 @@ public:
 					
 					std::stack<std::list<std::string>> empty_moves;
 					std::swap(moves, empty_moves);
+
 
 					std::stack<long> empty_corners;
 					std::swap(corner_states, empty_corners);
@@ -581,7 +645,9 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	benchmark_solves();
+	// benchmark_solves();
+	Cube cube;
+	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths = cube.generate_solution_lookup(9);
 
 	return 0;
 }
