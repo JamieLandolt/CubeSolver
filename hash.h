@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <utility>
+#include <memory>
 
 // A hash for a cube state to store visited states while DFSing
 struct StateHash {

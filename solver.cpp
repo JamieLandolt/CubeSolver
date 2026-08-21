@@ -13,6 +13,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <memory>
 
 #include <algorithm>
 
@@ -343,7 +344,7 @@ public:
 	int DEPTH_PHASE_2 = 12;
 
 	Solver(Cube& external_cube) : cube(external_cube) {
-		solution_paths = cube.generate_solution_lookup(7);
+		solution_paths = cube.generate_solution_lookup(9);
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
 		edge_orientations = orientations.second;
@@ -383,6 +384,8 @@ public:
 	void dfs(std::vector<std::string> scramble) {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
+
+		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
 
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
@@ -454,8 +457,10 @@ public:
 						// Store if we haven't been in the state before
 						if (!visited.count(state)) {
 							visited.insert(state);
-							DFSEntry* parent = new DFSEntry{dfs_state};
-							DFSEntry next_state_moves = DFSEntry{parent, state.first, state.second, move, depth + 1};
+							std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
+							DFSEntry* parent_ptr = parent.get();
+							dfs_nodes.push_back(std::move(parent));
+							DFSEntry next_state_moves = DFSEntry{std::move(parent_ptr), state.first, state.second, move, depth + 1};
 							states.push(next_state_moves);
 						}
 					}
@@ -570,7 +575,7 @@ void benchmark_solves() {
     std::vector<long> times;
 
 	int scramble_size = 25;
-	for (int scramble_num = 0; scramble_num < 100; scramble_num++) {
+	for (int scramble_num = 0; scramble_num < 20; scramble_num++) {
 		std::cout << "Scramble " << scramble_num << ":\n";
 
 		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
@@ -582,7 +587,7 @@ void benchmark_solves() {
 		for (i = 0; i < scramble.size() - 1; i++) {
 			std::cout << scramble[i] << ", ";
 		}
-		std::cout << scramble[i] << " | ";
+		std::cout << scramble[i] << "\n";
 
 		solver.reset_full();
 		solver.reset_dfs(scramble);
@@ -592,9 +597,9 @@ void benchmark_solves() {
 		solver.dfs(scramble);
 		auto solve_time = timer.stop(scramble_size);
 
-        long time = solve_time.count();
+		long time = solve_time.count();
 		std::cout << "Time: " << time << "ms | ";
-        times.push_back(time);
+		times.push_back(time);
 
 		// If a non middle layer edge is in a middle layer edge position
 		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
@@ -623,7 +628,10 @@ void benchmark_solves() {
 		}
 		std::cout << "\n\n";
 	}
-    std::cout << "Average Solve Time: " << timer.avg(times) << std::endl;
+	std::cout << "Min Solve Time: " << *std::min_element(times.begin(), times.end()) << std::endl;
+	std::cout << "Average Solve Time: " << timer.avg(times) << std::endl;
+	std::cout << "Median Solve Time: " << timer.median(times) << std::endl;
+	std::cout << "Max Solve Time: " << *std::max_element(times.begin(), times.end()) << std::endl;
 }
 
 int main(int argc, char** argv) {
