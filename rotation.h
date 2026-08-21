@@ -782,8 +782,8 @@ long F_EDGE_CYCLE(long edges, int direction) {
 		ten_shift = 8 * 5;
 		seven_shift = 1 * 5;
 
-		cycled = (edges & TWO_EPOS_MASK | two_orientation) << two_shift | (edges & SIX_EPOS_MASK | six_orientation) << six_shift
-		| (edges & TEN_EPOS_MASK | ten_orientation) >> ten_shift | (edges & SEVEN_EPOS_MASK | seven_orientation) >> seven_shift
+		cycled = (edges & TWO_MASK) << two_shift | (edges & SIX_MASK) << six_shift
+		| (edges & TEN_MASK) >> ten_shift | (edges & SEVEN_MASK) >> seven_shift
 		| (edges & ~(SIX_MASK | TWO_MASK | TEN_MASK | SEVEN_MASK));
 	} else if (direction == -1) {
 		two_shift = 5 * 5;

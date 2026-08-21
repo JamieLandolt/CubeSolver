@@ -346,7 +346,7 @@ public:
 		solution_paths = cube.generate_solution_lookup(7);
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
-		edge_orientations = orientations.first;
+		edge_orientations = orientations.second;
 	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
@@ -397,7 +397,7 @@ public:
 		 		DFSEntry dfs_state(states.top());
 
 				int depth = dfs_state.depth;
-                std::string move = dfs_state.move;
+				std::string move = dfs_state.move;
 				long corners = dfs_state.corners;
 				long edges = dfs_state.edges;
 
@@ -423,23 +423,22 @@ public:
 					solution.first = get_moves(&dfs_state);
 
 					// Clear all stacks
-                    std::stack<DFSEntry> empty_states;
-                    std::swap(states, empty_states);
+				        std::stack<DFSEntry> empty_states;
+				        std::swap(states, empty_states);
 
 					visited.clear();
 					visited.insert(std::make_pair(corners, edges));
 
-                    states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
+				        states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
 					continue;
 				}
 
+				// Based on the orientation of the corners and edges
+				// Finds the minimum moves needed to solve the case
+				// Works for both Phase 1 & 2
+				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 				// Search child nodes
 				for (std::string move : move_space) {
-					// Based on the orientation of the corners and edges
-					// Finds the minimum moves needed to solve the case
-					// Works for both Phase 1 & 2
-					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
-
 					// If it takes more moves than are left in the search to solve, don't bother searching
 					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
@@ -454,8 +453,9 @@ public:
 							
 						// Store if we haven't been in the state before
 						if (!visited.count(state)) {
-                            visited.insert(state);
-							DFSEntry next_state_moves = DFSEntry{&dfs_state, corners, edges, move, depth + 1};
+							visited.insert(state);
+							DFSEntry* parent = new DFSEntry{dfs_state};
+							DFSEntry next_state_moves = DFSEntry{parent, state.first, state.second, move, depth + 1};
 							states.push(next_state_moves);
 						}
 					}
@@ -506,7 +506,6 @@ public:
 
     std::list<std::string> combine(DFSEntry sol_p2, PathEntry sol_p3) {
         std::list<std::string> solution = get_moves(&sol_p2);
-        solution.reverse();
         std::list<std::string> solution_p3 = get_moves(sol_p3);
         
         solution.splice(solution.end(), solution_p3);
@@ -529,6 +528,7 @@ public:
             sol.push_back(path->move);
             path = path->parent_state;
         }
+	sol.reverse();
         return sol;
     }
 };
@@ -570,7 +570,7 @@ void benchmark_solves() {
     std::vector<long> times;
 
 	int scramble_size = 25;
-	for (int scramble_num = 0; scramble_num < 10; scramble_num++) {
+	for (int scramble_num = 0; scramble_num < 100; scramble_num++) {
 		std::cout << "Scramble " << scramble_num << ":\n";
 
 		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
@@ -628,7 +628,7 @@ void benchmark_solves() {
 
 int main(int argc, char** argv) {
 	benchmark_solves();
-	std::vector<std::string> scramble = {"R'"};
+	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
 
 	// solve(scramble);
 
