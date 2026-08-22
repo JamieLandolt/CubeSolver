@@ -575,7 +575,7 @@ void benchmark_solves() {
     std::vector<long> times;
 
 	int scramble_size = 25;
-	for (int scramble_num = 0; scramble_num < 20; scramble_num++) {
+	for (int scramble_num = 0; scramble_num < 80; scramble_num++) {
 		std::cout << "Scramble " << scramble_num << ":\n";
 
 		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
@@ -628,17 +628,19 @@ void benchmark_solves() {
 		}
 		std::cout << "\n\n";
 	}
-	std::cout << "Min Solve Time: " << *std::min_element(times.begin(), times.end()) << std::endl;
-	std::cout << "Average Solve Time: " << timer.avg(times) << std::endl;
-	std::cout << "Median Solve Time: " << timer.median(times) << std::endl;
-	std::cout << "Max Solve Time: " << *std::max_element(times.begin(), times.end()) << std::endl;
+	std::cout << "Min Solve Time: " << *std::min_element(times.begin(), times.end()) << "ms" << std::endl;
+	std::cout << "Average Solve Time: " << timer.avg(times) << "ms" << std::endl;
+	std::cout << "Median Solve Time: " << timer.median(times) << "ms" << std::endl;
+	std::cout << "Max Solve Time: " << *std::max_element(times.begin(), times.end()) << "ms" << std::endl;
+	std::cout << "Total Time: " << std::accumulate(times.begin(), times.end(), 0) << "ms" << std::endl;
 }
 
 int main(int argc, char** argv) {
-	benchmark_solves();
-	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
+	// benchmark_solves();
+	std::vector<std::string> scramble = {"U", "R2", "F", "B", "R", "B2", "R", "U2", "L", "B2", "R", "U'", "D'", "R2", "F", "R'", "L", "B2", "U2", "F2"};
 
-	// solve(scramble);
+
+	solve(scramble);
 
 	return 0;
 }
