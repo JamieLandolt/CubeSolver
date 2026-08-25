@@ -354,9 +354,6 @@ public:
 		auto dfs_bench_start = std::chrono::steady_clock::now();
 		while (depths.size() > 0) {
 			i++;
-			if (i % 100000 == 0) {
-				std::cout << i << "\n";
-			}
 			if (i % 1000 == 0 && std::chrono::steady_clock::now() - dfs_bench_start > std::chrono::seconds(60)) {
 				std::cout << "Timed out after 60s (" << i << " iterations)\n";
 				return;
@@ -382,10 +379,8 @@ public:
 			int phase_complete = check_state(corners, edges, i);
 
 			if (phase_complete == 2) {
-				std::cout << "HERE";
 				// Solved state has been found
 				solution.second = state_moves;
-				std::cout << "Number of iterations (total): " << i << "\n";
 				return;
 			}
 
@@ -394,13 +389,6 @@ public:
 				SOLVER_PHASE++;
 				move_space = DOMINO_MOVES;
 				search_depth = DEPTH_PHASE_2;
-				std::cout << "Number of iterations (first): " << i << "\n";
-
-				std::cout << "Domino reduction complete with: ";
-				for (std::string s : state_moves) {
-					std::cout << s << ", ";
-				}
-				std::cout << "\n";
 
 				// Save moves to get to that state
 				solution.first = state_moves;
@@ -474,7 +462,6 @@ public:
 
 
 		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
-			std::cout << 2 << "\n";
 			return 2;
 		}
 
