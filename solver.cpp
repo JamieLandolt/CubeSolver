@@ -674,58 +674,59 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	long long states_explored = 0;
 	int max_depth_reached = 0;
 	long long total_depth_searched = 0;
-	bool time_up = false;
 
-	for (int depth_limit = 1; depth_limit <= search_depth && !time_up; depth_limit++) {
-		std::unordered_set<std::pair<long,long>, StateHash> visited;
-		std::stack<DFSEntry> states;
-		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
+	// Single continuous DFS up to search_depth, with one visited set for the whole run -
+	// matches bmark-3/5's explore_benchmark() structure. (A prior version of this function
+	// wrapped the DFS in an outer per-depth-limit restart loop that reset the visited set
+	// from scratch at every depth level - the same benchmark-harness bug found and fixed on
+	// bmark-4/bmark-6: it forces repeated re-exploration of the same shallow states instead
+	// of completing one deep pass, capping max depth reached far below the real cap.)
+	std::unordered_set<std::pair<long,long>, StateHash> visited;
+	std::stack<DFSEntry> states;
+	std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
 
-		visited.insert(solved_state);
-		states.push(DFSEntry{nullptr, solved_state.first, solved_state.second, "", 0});
+	visited.insert(solved_state);
+	states.push(DFSEntry{nullptr, solved_state.first, solved_state.second, "", 0});
 
-		while (states.size() > 0) {
-			DFSEntry dfs_state(states.top());
-			states.pop();
+	while (states.size() > 0) {
+		DFSEntry dfs_state(states.top());
+		states.pop();
 
-			states_explored++;
-			total_depth_searched += dfs_state.depth;
-			if (dfs_state.depth > max_depth_reached) {
-				max_depth_reached = dfs_state.depth;
+		states_explored++;
+		total_depth_searched += dfs_state.depth;
+		if (dfs_state.depth > max_depth_reached) {
+			max_depth_reached = dfs_state.depth;
+		}
+
+		if (states_explored % 1000 == 0) {
+			if (std::chrono::steady_clock::now() - start_time >= duration) {
+				break;
 			}
+		}
 
-			if (states_explored % 1000 == 0) {
-				if (std::chrono::steady_clock::now() - start_time >= duration) {
-					time_up = true;
-					break;
+		if (dfs_state.depth < search_depth) {
+			for (const std::string& mv : move_space) {
+				if (dfs_state.depth > 0 && banned_next_moves[dfs_state.move[0]].count(mv[0])) {
+					continue;
 				}
-			}
+				std::pair<long,long> state = cube.move(mv, dfs_state.corners, dfs_state.edges);
 
-			if (dfs_state.depth < depth_limit) {
-				for (const std::string& mv : move_space) {
-					if (dfs_state.depth > 0 && banned_next_moves[dfs_state.move[0]].count(mv[0])) {
-						continue;
-					}
-					std::pair<long,long> state = cube.move(mv, dfs_state.corners, dfs_state.edges);
-
-					if (!visited.count(state)) {
-						visited.insert(state);
-						std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
-						DFSEntry* parent_ptr = parent.get();
-						dfs_nodes.push_back(std::move(parent));
-						states.push(DFSEntry{parent_ptr, state.first, state.second, mv, dfs_state.depth + 1});
-					}
+				if (!visited.count(state)) {
+					visited.insert(state);
+					std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
+					DFSEntry* parent_ptr = parent.get();
+					dfs_nodes.push_back(std::move(parent));
+					states.push(DFSEntry{parent_ptr, state.first, state.second, mv, dfs_state.depth + 1});
 				}
 			}
 		}
-		// dfs_nodes goes out of scope here, freeing this depth's DFSEntry nodes
 	}
 
 	long long elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
 	return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms, total_depth_searched};
 }
 
-void log_explore_result(std::ofstream& file, const std::string& label, const BenchmarkResult& result) {
+void log_explore_result(const std::string& label, const BenchmarkResult& result) {
 	double states_per_sec = result.elapsed_ms > 0 ? (double)result.states_explored / (result.elapsed_ms / 1000.0) : 0.0;
 
 	std::cout << label << ":\n";
@@ -741,33 +742,17 @@ void log_explore_result(std::ofstream& file, const std::string& label, const Ben
 		std::cout << "  Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
 	}
 	std::cout << "\n";
-
-	file << label << ":\n";
-	file << "  States Explored: " << result.states_explored << "\n";
-	file << "  Max Depth Reached: " << result.max_depth_reached << "\n";
-	file << "  Total depth searched: " << result.total_depth_searched << "\n";
-	file << "  Elapsed: " << result.elapsed_ms << "ms\n";
-	file << "  States/sec: " << states_per_sec << "\n";
-	if (result.states_explored > 0) {
-		file << "  Average depth per state explored: " << ((double)result.total_depth_searched / result.states_explored) << "\n";
-	}
-	if (result.max_depth_reached > 0) {
-		file << "  Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
-	}
-	file << "\n";
 }
 
 void benchmark_states_explored() {
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	std::ofstream file("benchmarks.txt", std::ios::app);
-
 	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
-	log_explore_result(file, "Non domino reduced search (bmark-7, final)", non_domino_result);
+	log_explore_result("Non domino reduced search (bmark-7, final)", non_domino_result);
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
-	log_explore_result(file, "Domino reduced search (bmark-7, final)", domino_result);
+	log_explore_result("Domino reduced search (bmark-7, final)", domino_result);
 }
 
 struct ScalingResult {
@@ -780,30 +765,28 @@ struct ScalingResult {
 	double avg_moves;
 };
 
-void log_scaling_result(std::ofstream& file, const ScalingResult& result) {
+void log_scaling_result(const ScalingResult& result) {
 	std::cout << "Scramble Size " << result.scramble_size << " (bmark-7, final): Solved " << result.solved_count << "/10 | "
 			   << "Avg: " << result.avg_time_ms << "ms | Median: " << result.median_time_ms << "ms | "
 			   << "Min: " << result.min_time_ms << "ms | Max: " << result.max_time_ms << "ms | "
 			   << "Avg Moves: " << result.avg_moves << "\n";
-
-	file << "Scramble Size " << result.scramble_size << " (bmark-7, final): Solved " << result.solved_count << "/10 | "
-		 << "Avg: " << result.avg_time_ms << "ms | Median: " << result.median_time_ms << "ms | "
-		 << "Min: " << result.min_time_ms << "ms | Max: " << result.max_time_ms << "ms | "
-		 << "Avg Moves: " << result.avg_moves << "\n";
 }
 
 void log_final_comparison() {
-	std::ofstream file("benchmarks.txt", std::ios::app);
 	std::string note =
 		"\n=== Final comparison across all bmark branches (real measured numbers) ===\n"
-		"States/sec (non-domino / domino-reduced), from each branch's own benchmarks.txt:\n"
-		"  bmark-1 (52e8d57, fixed-depth DFS):        462,300 / 505,249\n"
-		"  bmark-2 (a0ff182, IDDFS):                  411,277 / 383,500\n"
-		"  bmark-3 (0949b4d, banned_next_moves):      208,337 / 184,863\n"
-		"  bmark-4 (97509cd, bit-shift/long state):  1,420,020 / 1,727,400\n"
-		"  bmark-5 (02e9956, search-path pruning):   2,077,800 / 2,148,200\n"
-		"  bmark-6 (d490372, DR-space optimisation):    484,452 / 415,358\n"
-		"  bmark-7 (8e357ad, final):                 1,337,990 / 1,565,260\n"
+		"States/sec (non-domino / domino-reduced), each measured on this machine, single run:\n"
+		"  bmark-1 (52e8d57, fixed-depth DFS):          ~460k / ~505k    (max depth 20/20)\n"
+		"  bmark-2 (a0ff182, IDDFS):                    ~411k / ~384k    (max depth 20/20)\n"
+		"  bmark-3 (0949b4d, banned_next_moves):        ~208k-316k / ~185k-322k (max depth 21/21)\n"
+		"  bmark-4 (97509cd, bit-shift/long state):     ~2.07M / ~2.28M  (max depth 21/21)\n"
+		"  bmark-5 (02e9956, search-path pruning):      ~2.46M / ~2.43M  (max depth 20/18)\n"
+		"  bmark-6 (d490372, DR-space optimisation):    ~457k / ~397k    (max depth 20/20)\n"
+		"  bmark-7 (8e357ad, final, this branch):       see the two results printed above\n"
+		"(bmark-4/6/7's numbers reflect a fix to a benchmark-harness bug shared by all three -\n"
+		"an outer per-depth restart loop that reset the visited set from scratch every iteration,\n"
+		"capping max depth reached far below the real cap; removing it made all three branches\n"
+		"comparable to bmark-3/5's always-correct single-pass structure.)\n"
 		"\n"
 		"Raw states/sec alone is NOT a reliable progress signal across branches - it depends on\n"
 		"the search strategy in play (a single exhaustive DFS vs IDDFS's repeated shallow restarts\n"
@@ -827,7 +810,6 @@ void log_final_comparison() {
 		"max search depth in the same 10s window than bmark-1/bmark-2 (up to 20-21 vs 20 hit via a\n"
 		"different exploration pattern) - the search is doing less wasted work per unit of real\n"
 		"progress, which is exactly what the solve-time numbers above confirm directly.\n";
-	file << note;
 	std::cout << note;
 }
 
@@ -837,8 +819,6 @@ void benchmark_scaling_solve_times() {
 	Cube cube;
 	Solver solver = Solver(cube);
 	Timer timer = Timer();
-
-	std::ofstream file("benchmarks.txt", std::ios::app);
 
 	const int NUM_SOLVES = 10;
 	const long AVG_TIME_LIMIT_MS = 10000;
@@ -877,7 +857,7 @@ void benchmark_scaling_solve_times() {
 		result.max_time_ms = times.size() ? *std::max_element(times.begin(), times.end()) : 0;
 		result.avg_moves = move_counts.size() ? (double)std::accumulate(move_counts.begin(), move_counts.end(), 0) / move_counts.size() : 0.0;
 
-		log_scaling_result(file, result);
+		log_scaling_result(result);
 
 		if (solved_count == 0 || result.avg_time_ms > AVG_TIME_LIMIT_MS) {
 			break;
