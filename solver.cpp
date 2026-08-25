@@ -834,15 +834,11 @@ int main(int argc, char** argv) {
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	std::ofstream file("benchmarks.txt");
-
 	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Non domino reduced search (bmark-3, banned_next_moves pruning)", non_domino_result);
-	log_benchmark_result(file, "Non domino reduced search (bmark-3, banned_next_moves pruning)", non_domino_result);
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
-	log_benchmark_result(file, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
 
 	std::string comparison_note =
 		"Honest comparison vs bmark-2: bmark-2 (IDDFS, no banned_next_moves pruning) explored "
@@ -865,7 +861,6 @@ int main(int argc, char** argv) {
 		"would be a solve-time benchmark (as run by bmark-1/bmark-2/bmark-7), which this branch does not "
 		"include; states-explored/sec here is a proxy for raw search throughput, not solve quality.\n";
 	std::cout << comparison_note << "\n";
-	file << comparison_note << "\n";
 
 	return 0;
 }
