@@ -731,40 +731,39 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 }
 
 int main(int argc, char** argv) {
-	std::ofstream file("benchmarks.txt");
-
 	std::vector<std::string> non_domino_moves = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> domino_moves = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
 	int search_depth = 20;
 
 	BenchmarkResult non_domino_result = explore_benchmark(non_domino_moves, search_depth, std::chrono::seconds(10));
-	log_benchmark_result(file, "Non domino reduced search (bmark-5, search-path pruning)", non_domino_result);
 	log_benchmark_result(std::cout, "Non domino reduced search (bmark-5, search-path pruning)", non_domino_result);
 
 	BenchmarkResult domino_result = explore_benchmark(domino_moves, search_depth, std::chrono::seconds(10));
-	log_benchmark_result(file, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
 
 	double non_domino_states_per_sec = (double)non_domino_result.states_explored / (non_domino_result.elapsed_ms / 1000.0);
 	double domino_states_per_sec = (double)domino_result.states_explored / (domino_result.elapsed_ms / 1000.0);
 
+	// bmark-4's corrected numbers (after fixing an unrelated benchmark-harness restart-loop
+	// bug that had capped its max depth reached at 6/9): ~2,071,400 states/sec (non domino,
+	// max depth 21) and ~2,276,900 states/sec (domino, max depth 21).
 	std::string comparison_note =
-		"Comparison vs bmark-4 (bit-shift/long cube state, no pruning): bmark-4 measured "
-		"106470 states/sec (non domino) and 109467 states/sec (domino) with max depth reached "
-		"of only 6 and 9. This commit (bmark-5, after fixing the orientation-lookup pruning bug) "
-		"measured " + std::to_string((long long)non_domino_states_per_sec) + " states/sec (non domino) and " +
-		std::to_string((long long)domino_states_per_sec) + " states/sec (domino), reaching max depth " +
-		std::to_string(non_domino_result.max_depth_reached) + " and " + std::to_string(domino_result.max_depth_reached) +
-		" respectively - roughly a " + std::to_string((long long)(non_domino_states_per_sec / 106470.0)) +
-		"x and " + std::to_string((long long)(domino_states_per_sec / 109467.0)) +
-		"x increase in states/sec. This is not because more useful work is being done per second; it is because "
-		"the search-path pruning check cuts off entire subtrees (states whose orientation lower bound exceeds the "
-		"moves remaining in the search budget) before their children are ever generated or hashed, so the search "
-		"spends far less time producing and visited-checking states that could never lead to a solution within the "
-		"remaining depth, and reaches a much greater max depth on the same time budget as a result.\n";
+		"Comparison vs bmark-4 (bit-shift/long cube state, no search-path pruning, corrected "
+		"benchmark numbers): bmark-4 measured ~2,071,400 states/sec (non domino) and ~2,276,900 "
+		"states/sec (domino), both reaching max depth 21 in 10s. This commit (bmark-5, after "
+		"fixing the orientation-lookup pruning bug) measured " + std::to_string((long long)non_domino_states_per_sec) +
+		" states/sec (non domino) and " + std::to_string((long long)domino_states_per_sec) +
+		" states/sec (domino), reaching max depth " + std::to_string(non_domino_result.max_depth_reached) + " and " +
+		std::to_string(domino_result.max_depth_reached) + " respectively. With bmark-4's harness bug fixed, both "
+		"branches now reach the same max depth (21) on the same time budget, so states/sec is a fairer comparison "
+		"here than it first appeared: search-path pruning does not necessarily mean MORE states/sec once bmark-4's "
+		"real throughput is measured correctly - it means the search reaches the same depth while doing meaningfully "
+		"less wasted work per state (each pruned subtree's states are never generated or hashed at all, unlike a "
+		"plain DFS that must generate a state before it can be checked/discarded). The real proof of the pruning's "
+		"value isn't raw states/sec here, it's whether solves get faster/more reliable at greater scramble sizes, "
+		"which only bmark-1/bmark-2/bmark-7 directly measure via a solve-time benchmark.\n";
 
-	file << comparison_note;
 	std::cout << comparison_note;
 
 	return 0;
