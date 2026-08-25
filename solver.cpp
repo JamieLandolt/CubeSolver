@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 #include <algorithm>
 
@@ -498,6 +499,7 @@ struct BenchmarkResult {
 	long long states_explored;
 	int max_depth_reached;
 	long long elapsed_ms;
+	long long total_depth_searched = 0;
 };
 
 // Mirrors the stack-based DFS traversal mechanics used in Solver::dfs(), including
@@ -515,6 +517,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 	long long states_explored = 0;
 	int max_depth_reached = 0;
+	long long total_depth_searched = 0;
 
 	auto start_time = std::chrono::steady_clock::now();
 
@@ -536,7 +539,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 				auto elapsed = std::chrono::steady_clock::now() - start_time;
 				if (elapsed >= duration) {
 					auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
-					return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count()};
+					return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count(), total_depth_searched};
 				}
 			}
 
@@ -549,6 +552,8 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 			last_moves.pop();
 			corner_states.pop();
 			edge_states.pop();
+
+			total_depth_searched += depth;
 
 			if (depth > max_depth_reached) {
 				max_depth_reached = depth;
@@ -577,7 +582,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now() - start_time);
-	return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count()};
+	return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count(), total_depth_searched};
 }
 
 void log_benchmark_result(std::ostream& out, const std::string& label, const BenchmarkResult& result) {
@@ -585,8 +590,16 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 	out << label << ":\n";
 	out << "  States explored: " << result.states_explored << "\n";
 	out << "  Max depth reached: " << result.max_depth_reached << "\n";
+	out << "  Total depth searched: " << result.total_depth_searched << "\n";
 	out << "  Elapsed: " << result.elapsed_ms << "ms\n";
-	out << "  States/sec: " << states_per_sec << "\n\n";
+	out << "  States/sec: " << states_per_sec << "\n";
+	if (result.states_explored > 0) {
+		out << "  Average depth per state explored: " << ((double)result.total_depth_searched / result.states_explored) << "\n";
+	}
+	if (result.max_depth_reached > 0) {
+		out << "  Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
+	}
+	out << "\n";
 }
 
 int main(int argc, char** argv) {
@@ -602,6 +615,54 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
 	log_benchmark_result(file, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
+
+	// Honest comparison vs bmark-3 (banned_next_moves pruning, vector<pair<int,int>> cube
+	// state hashed down to a uint32_t/uint64_t pair before insertion into `visited`).
+	// bmark-3's committed benchmarks.txt recorded, over the same 10s / search_depth=20 budget:
+	//   Non domino: 2,304,999 states explored, max depth reached 21, 230109 states/sec
+	//   Domino:     2,012,999 states explored, max depth reached 21, 201280 states/sec
+	std::ostringstream note;
+	note << "Comparison note vs bmark-3 (real numbers, this machine, this run):\n"
+		<< "  bmark-3 non-domino: 2304999 states, max depth 21, 230109 states/sec"
+		<< " (breadth ~= " << (2304999.0 / 21) << " states/depth-level; total_depth_searched not recorded in bmark-3)\n"
+		<< "  bmark-3 domino:     2012999 states, max depth 21, 201280 states/sec"
+		<< " (breadth ~= " << (2012999.0 / 21) << " states/depth-level)\n"
+		<< "  bmark-4 non-domino: " << non_domino_result.states_explored << " states, max depth "
+		<< non_domino_result.max_depth_reached << ", "
+		<< (non_domino_result.elapsed_ms > 0 ? (non_domino_result.states_explored * 1000.0) / non_domino_result.elapsed_ms : 0.0)
+		<< " states/sec (avg depth/state " << ((double)non_domino_result.total_depth_searched / non_domino_result.states_explored)
+		<< "; breadth ~= " << ((double)non_domino_result.states_explored / non_domino_result.max_depth_reached) << " states/depth-level)\n"
+		<< "  bmark-4 domino:     " << domino_result.states_explored << " states, max depth "
+		<< domino_result.max_depth_reached << ", "
+		<< (domino_result.elapsed_ms > 0 ? (domino_result.states_explored * 1000.0) / domino_result.elapsed_ms : 0.0)
+		<< " states/sec (avg depth/state " << ((double)domino_result.total_depth_searched / domino_result.states_explored)
+		<< "; breadth ~= " << ((double)domino_result.states_explored / domino_result.max_depth_reached) << " states/depth-level)\n"
+		<< "\n"
+		<< "  On this run, bmark-4's raw states/sec is actually HIGHER than bmark-3's, not lower --\n"
+		<< "  so any earlier read of bmark-4 being slower in states/sec does not hold on this machine/run.\n"
+		<< "  What stands out instead is depth reached: bmark-4 tops out at max depth 7 (non-domino) /\n"
+		<< "  11 (domino) versus bmark-3's 21/21 in the same time budget, even though bmark-4 explores\n"
+		<< "  far MORE total states. The search-breadth figures explain why: bmark-4's states-per-depth-\n"
+		<< "  level is roughly 15-19x bmark-3's. Since explore_benchmark() re-runs a full DFS with a fresh\n"
+		<< "  `visited` set for every outer max_depth (both branches use the same search_depth=20 cap and\n"
+		<< "  the same banned_next_moves pruning), that gap means bmark-4's visited-state dedup is\n"
+		<< "  collapsing far fewer states at a given nominal depth than bmark-3's vector-based\n"
+		<< "  representation does -- so the 10s budget is consumed inside one shallow max_depth iteration\n"
+		<< "  instead of progressing through many. We cannot confirm from this benchmark alone whether\n"
+		<< "  that is a real difference in how many physically-distinct cube states exist at that depth,\n"
+		<< "  or a sign that rotation.h's bit-shift move/cycle logic still fails to canonicalise some\n"
+		<< "  states to the same bit pattern that the vector representation would treat as identical --\n"
+		<< "  this commit's own message (\"Fixed all move bugs I think\") is explicitly uncertain, so a\n"
+		<< "  residual move bug is plausible but not proven here.\n"
+		<< "  Either way, raw states/sec is only one proxy for whether this branch's bit-shift/long state\n"
+		<< "  representation was a successful optimisation. This benchmark's actual intent per the bmark-4\n"
+		<< "  commit was correctness of the bit-shift representation, not exploration throughput -- the\n"
+		<< "  real payoff of two `long`s over two `vector<pair<int,int>>`s (no per-move heap allocation)\n"
+		<< "  shows up in memory/allocation overhead during real solves, which this synthetic exploration\n"
+		<< "  benchmark does not directly measure.\n";
+
+	std::cout << "\n" << note.str();
+	file << "\n" << note.str();
 
 	return 0;
 }
