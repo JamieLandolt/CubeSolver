@@ -701,9 +701,11 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	std::vector<std::string> scramble = {"U2", "D2", "F'", "R2"};
+	// 6-move scramble chosen for gprof profiling: solves in ~20-25s on this machine,
+	// comfortably under 40s, giving a meaningful sample for the profiler.
+	std::vector<std::string> scramble = {"R", "U", "R'", "U'", "F", "D'"};
 	solve(scramble);
-	
+
 	// benchmark_solves();
 
 	return 0;
