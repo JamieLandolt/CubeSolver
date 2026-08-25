@@ -1,44 +1,40 @@
 Non domino reduced search (bmark-4, bit-shift/long state):
-  States explored: 14808000
-  Max depth reached: 7
-  Total depth searched: 93505001
-  Elapsed: 10428ms
-  States/sec: 1.42002e+06
-  Average depth per state explored: 6.31449
-  Average states per depth level (search breadth): 2.11543e+06
+  States explored: 20714000
+  Max depth reached: 21
+  Total depth searched: 433310671
+  Elapsed: 10000ms
+  States/sec: 2.0714e+06
+  Average depth per state explored: 20.9187
+  Average states per depth level (search breadth): 986381
 
 Domino reduced search (bmark-4, bit-shift/long state):
-  States explored: 17274000
-  Max depth reached: 11
-  Total depth searched: 174334015
+  States explored: 22769000
+  Max depth reached: 21
+  Total depth searched: 473981668
   Elapsed: 10000ms
-  States/sec: 1.7274e+06
-  Average depth per state explored: 10.0923
-  Average states per depth level (search breadth): 1.57036e+06
+  States/sec: 2.2769e+06
+  Average depth per state explored: 20.817
+  Average states per depth level (search breadth): 1.08424e+06
 
 
 Comparison note vs bmark-3 (real numbers, this machine, this run):
   bmark-3 non-domino: 2304999 states, max depth 21, 230109 states/sec (breadth ~= 109762 states/depth-level; total_depth_searched not recorded in bmark-3)
   bmark-3 domino:     2012999 states, max depth 21, 201280 states/sec (breadth ~= 95857.1 states/depth-level)
-  bmark-4 non-domino: 14808000 states, max depth 7, 1.42002e+06 states/sec (avg depth/state 6.31449; breadth ~= 2.11543e+06 states/depth-level)
-  bmark-4 domino:     17274000 states, max depth 11, 1.7274e+06 states/sec (avg depth/state 10.0923; breadth ~= 1.57036e+06 states/depth-level)
+  bmark-4 non-domino: 20714000 states, max depth 21, 2.0714e+06 states/sec (avg depth/state 20.9187; breadth ~= 986381 states/depth-level)
+  bmark-4 domino:     22769000 states, max depth 21, 2.2769e+06 states/sec (avg depth/state 20.817; breadth ~= 1.08424e+06 states/depth-level)
 
-  On this run, bmark-4's raw states/sec is actually HIGHER than bmark-3's, not lower --
-  so any earlier read of bmark-4 being slower in states/sec does not hold on this machine/run.
-  What stands out instead is depth reached: bmark-4 tops out at max depth 7 (non-domino) /
-  11 (domino) versus bmark-3's 21/21 in the same time budget, even though bmark-4 explores
-  far MORE total states. The search-breadth figures explain why: bmark-4's states-per-depth-
-  level is roughly 15-19x bmark-3's. Since explore_benchmark() re-runs a full DFS with a fresh
-  `visited` set for every outer max_depth (both branches use the same search_depth=20 cap and
-  the same banned_next_moves pruning), that gap means bmark-4's visited-state dedup is
-  collapsing far fewer states at a given nominal depth than bmark-3's vector-based
-  representation does -- so the 10s budget is consumed inside one shallow max_depth iteration
-  instead of progressing through many. We cannot confirm from this benchmark alone whether
-  that is a real difference in how many physically-distinct cube states exist at that depth,
-  or a sign that rotation.h's bit-shift move/cycle logic still fails to canonicalise some
-  states to the same bit pattern that the vector representation would treat as identical --
-  this commit's own message ("Fixed all move bugs I think") is explicitly uncertain, so a
-  residual move bug is plausible but not proven here.
+  Root cause of the earlier depth-7-11-vs-21 anomaly: explore_benchmark() previously wrapped
+  its DFS in an outer `for (int max_depth = 0; max_depth <= search_depth; max_depth++)` loop
+  that reset the stack and `visited` set from scratch on every iteration -- an iterative-
+  deepening restart that bmark-3's explore_benchmark() does not have (it runs one continuous
+  DFS with a single `visited` set to the search_depth cap). That extra loop was a benchmark-
+  harness bug introduced when bmark-4's explore_benchmark() was written, not a property of the
+  solver: it forced repeated re-exploration of the same shallow states at every outer
+  iteration, consuming the 10s budget without ever reaching a deep, single DFS pass. It has
+  been removed so explore_benchmark() now matches bmark-3's single-pass structure. Separately,
+  move/inverse round-trip tests (R,R',L,L',U,U',D,D',F,F',B,B' from solved) confirmed the
+  bit-shift corner/edge encoding returns to the exact solved long values bit-for-bit after
+  every move+inverse pair, so no evidence of a canonicalisation or hashing bug was found.
   Either way, raw states/sec is only one proxy for whether this branch's bit-shift/long state
   representation was a successful optimisation. This benchmark's actual intent per the bmark-4
   commit was correctness of the bit-shift representation, not exploration throughput -- the
