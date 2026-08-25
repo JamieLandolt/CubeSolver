@@ -734,29 +734,74 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(domino_moves, search_depth, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
 
-	double non_domino_states_per_sec = (double)non_domino_result.states_explored / (non_domino_result.elapsed_ms / 1000.0);
-	double domino_states_per_sec = (double)domino_result.states_explored / (domino_result.elapsed_ms / 1000.0);
+	// Average time to solve scrambles of size 6 (existing Solver/dfs() path, unmodified).
+	// N=6 was chosen empirically: sizes 10/15/20+ fail to solve at all (not slowly - not at
+	// all) because DEPTH_PHASE_1/DEPTH_PHASE_2 (9/9) cap the total move budget the two-phase
+	// IDDFS can search, independent of the search-path pruning's speed. Size 7 solves
+	// inconsistently (5-9/10 across trials). Size 6 solves reliably (9-10/10 across trials)
+	// with average solve time well under a second.
+	const int NUM_SCRAMBLES = 10;
+	const int SCRAMBLE_SIZE = 6;
+	long long total_ms = 0;
+	int solved_count = 0;
+	std::vector<long long> solve_times_ms;
+	std::vector<size_t> solve_move_counts;
 
-	// bmark-4's corrected numbers (after fixing an unrelated benchmark-harness restart-loop
-	// bug that had capped its max depth reached at 6/9): ~2,071,400 states/sec (non domino,
-	// max depth 21) and ~2,276,900 states/sec (domino, max depth 21).
-	std::string comparison_note =
-		"Comparison vs bmark-4 (bit-shift/long cube state, no search-path pruning, corrected "
-		"benchmark numbers): bmark-4 measured ~2,071,400 states/sec (non domino) and ~2,276,900 "
-		"states/sec (domino), both reaching max depth 21 in 10s. This commit (bmark-5, after "
-		"fixing the orientation-lookup pruning bug) measured " + std::to_string((long long)non_domino_states_per_sec) +
-		" states/sec (non domino) and " + std::to_string((long long)domino_states_per_sec) +
-		" states/sec (domino), reaching max depth " + std::to_string(non_domino_result.max_depth_reached) + " and " +
-		std::to_string(domino_result.max_depth_reached) + " respectively. With bmark-4's harness bug fixed, both "
-		"branches now reach the same max depth (21) on the same time budget, so states/sec is a fairer comparison "
-		"here than it first appeared: search-path pruning does not necessarily mean MORE states/sec once bmark-4's "
-		"real throughput is measured correctly - it means the search reaches the same depth while doing meaningfully "
-		"less wasted work per state (each pruned subtree's states are never generated or hashed at all, unlike a "
-		"plain DFS that must generate a state before it can be checked/discarded). The real proof of the pruning's "
-		"value isn't raw states/sec here, it's whether solves get faster/more reliable at greater scramble sizes, "
-		"which only bmark-1/bmark-2/bmark-7 directly measure via a solve-time benchmark.\n";
+	Cube solve_cube = Cube();
+	Solver solve_solver = Solver(solve_cube);
 
-	std::cout << comparison_note;
+	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-5, DFS with search-path pruning) ===\n";
+
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
+		std::pair<std::vector<std::string>,std::pair<long,long>> scrambled = solve_cube.random_scramble(SCRAMBLE_SIZE, solve_solver.DEPTH_PHASE_1);
+		std::vector<std::string> scramble = scrambled.first;
+
+		solve_solver.reset_full();
+
+		auto solve_start = std::chrono::steady_clock::now();
+		solve_solver.dfs(scramble);
+		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solve_solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::string scramble_str;
+		for (const std::string& mv : scramble) {
+			scramble_str += mv + ", ";
+		}
+
+		std::cout << "Solve " << (n + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND") <<
+			" | Time: " << solve_ms << "ms | Scramble: " << scramble_str << "\n";
+
+		if (solved) {
+			total_ms += solve_ms;
+			solved_count++;
+			solve_times_ms.push_back(solve_ms);
+			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		}
+	}
+
+	std::cout << "Solved " << solved_count << "/" << NUM_SCRAMBLES << " scrambles of size " << SCRAMBLE_SIZE;
+	if (solved_count > 0) {
+		std::cout << ". Average solve time (successful solves only): " << (total_ms / solved_count) << "ms\n";
+
+		std::vector<long long> sorted_times(solve_times_ms);
+		std::sort(sorted_times.begin(), sorted_times.end());
+		long long median_ms = sorted_times[sorted_times.size() / 2];
+		long long min_ms = sorted_times.front();
+		long long max_ms = sorted_times.back();
+
+		size_t total_moves = 0;
+		for (size_t mc : solve_move_counts) {
+			total_moves += mc;
+		}
+		double avg_moves = (double)total_moves / solve_move_counts.size();
+
+		std::cout << "Median solve time: " << median_ms << "ms | Min: " << min_ms << "ms | Max: " << max_ms <<
+			"ms | Average moves in solution: " << avg_moves << "\n";
+	} else {
+		std::cout << ". No successful solves to average.\n";
+	}
 
 	return 0;
 }
