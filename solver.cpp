@@ -327,6 +327,10 @@ private:
 	std::stack<long> edge_states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
+	std::pair<std::vector<int>, std::vector<int>> orientations;
+	std::vector<int> corner_orientations;
+	std::vector<int> edge_orientations;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
@@ -339,7 +343,11 @@ public:
 	int DEPTH_PHASE_1 = 12;
 	int DEPTH_PHASE_2 = 18;
 
-	Solver(Cube& external_cube) : cube(external_cube) {}
+	Solver(Cube& external_cube) : cube(external_cube) {
+		orientations = cube.generate_orientations();
+		corner_orientations = orientations.first;
+		edge_orientations = orientations.first;
+	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
 		return solution;
@@ -468,7 +476,7 @@ public:
 					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 
 					// If it takes more moves than are left in the search to solve, don't bother searching
-					if (std::max(min_sol_moves.first, min_sol_moves.second) > search_depth - depth) {
+					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
 					}
 
@@ -645,9 +653,9 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	// benchmark_solves();
-	Cube cube;
-	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths = cube.generate_solution_lookup(9);
+	// Hardcoded 7-move scramble, solves in ~9s with the pruning bug fixed (see cfd582e)
+	std::vector<std::string> scramble = {"R", "U", "F", "L", "D", "B", "R"};
+	solve(scramble);
 
 	return 0;
 }
