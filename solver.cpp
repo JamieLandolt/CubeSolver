@@ -729,10 +729,14 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 		visited.insert({corners, edges});
 
-		for (const std::string& move : move_space) {
-			std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+		// Computed once per node (not once per candidate move) - this state doesn't
+		// change while trying different moves from it, so recomputing it inside the
+		// loop below was pure wasted work.
+		std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+		bool prunedHere = std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth_limit - depth;
 
-			if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth_limit - depth) {
+		for (const std::string& move : move_space) {
+			if (prunedHere) {
 				break;
 			}
 
@@ -786,31 +790,58 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", domino_result);
 
-	std::string comparison_note =
-		"Comparison note (bmark-6 vs bmark-5): This commit's specific feature is "
-		"generate_solution_lookup(), a BFS lookup table for efficiently solving an "
-		"already domino-reduced cube from within 9 moves of solved - a narrow, "
-		"specific-case optimisation. It is not exercised by explore_benchmark() at "
-		"all, which still runs a generic scrambled-cube single-pass DFS with the "
-		"orientation-distance pruning bound. So this benchmark cannot show any "
-		"benefit from the DR-space lookup feature either way. bmark-5 measured "
-		"1,183,100 states/sec (non-domino) and 1,302,500 states/sec (domino), both "
-		"reaching max depth 20 in 10s. bmark-6 measured 457,054 states/sec "
-		"(non-domino) and 396,960 states/sec (domino), also reaching max depth 20 "
-		"in 10s. (An earlier version of this benchmark had an outer per-depth "
-		"restart loop that reset the visited set from scratch every iteration - the "
-		"same benchmark-harness bug independently found and fixed on bmark-4 - "
-		"capping max depth reached at 8-10 despite similar states/sec; that has "
-		"been fixed here so this is a fair single-pass-DFS comparison against "
-		"bmark-5.) With the harness now doing the same work in both branches, "
-		"bmark-6 is genuinely slower per state than bmark-5 - most likely because "
-		"this commit's DEPTH_PHASE_1/2 caps are larger (12/18 vs bmark-5's), so "
-		"cube.ori_to_int()'s pruning-bound lookup and the per-move work is done "
-		"more times relative to how much it prunes at this branch's depth budget. "
-		"No conclusion about the 9-move DR-space lookup feature's benefit can be "
-		"drawn from this benchmark either way; a fair test would need to actually "
-		"invoke generate_solution_lookup() against a domino-reduced scramble.";
-	std::cout << comparison_note << "\n";
+	// Average time to solve scrambles of size N (chosen so avg stays comfortably under 30s)
+	const int NUM_SCRAMBLES = 10;
+	const int SCRAMBLE_SIZE = 6;
+	Cube solveCube;
+	Solver solver(solveCube);
+	long long total_ms = 0;
+	int solved_count = 0;
+	std::vector<long long> solve_times_ms;
+	std::vector<size_t> solve_move_counts;
+
+	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-6) ===\n";
+
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
+		std::pair<std::vector<std::string>, std::pair<long, long>> p = solveCube.random_scramble(SCRAMBLE_SIZE, solver.DEPTH_PHASE_1);
+		std::vector<std::string> scramble = p.first;
+
+		solver.reset_full();
+
+		auto solve_start = std::chrono::steady_clock::now();
+		solver.dfs(scramble);
+		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+		std::pair<std::list<std::string>, std::list<std::string>> solution = solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::string scramble_str;
+		for (const std::string& mv : scramble) scramble_str += mv + ", ";
+
+		std::cout << "Solve " << (n + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND")
+			<< " | Time: " << solve_ms << "ms | Scramble: " << scramble_str << "\n";
+
+		if (solved) {
+			total_ms += solve_ms;
+			solved_count++;
+			solve_times_ms.push_back(solve_ms);
+			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		}
+	}
+
+	std::cout << "Solved " << solved_count << "/" << NUM_SCRAMBLES << " scrambles of size " << SCRAMBLE_SIZE
+		<< (solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
+		                     : ". No successful solves to average.\n");
+
+	if (solved_count > 0) {
+		std::vector<long long> sorted_times(solve_times_ms);
+		std::sort(sorted_times.begin(), sorted_times.end());
+		size_t total_moves = 0;
+		for (size_t mc : solve_move_counts) total_moves += mc;
+		std::cout << "Median solve time: " << sorted_times[sorted_times.size() / 2] << "ms | Min: " << sorted_times.front()
+			<< "ms | Max: " << sorted_times.back() << "ms | Average moves in solution: "
+			<< ((double)total_moves / solve_move_counts.size()) << "\n";
+	}
 
 	return 0;
 }
