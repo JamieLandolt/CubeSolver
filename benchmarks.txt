@@ -1,0 +1,12 @@
+Non domino reduced search (bmark-3, banned_next_moves pruning):
+  States Explored: 2304999
+  Max Depth Reached: 21
+  Elapsed: 10017ms
+  States/sec: 230109
+
+Domino reduced search (bmark-3, banned_next_moves pruning):
+  States Explored: 2012999
+  Max Depth Reached: 21
+  Elapsed: 10001ms
+  States/sec: 201280
+

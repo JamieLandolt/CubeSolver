@@ -439,14 +439,26 @@ public:
 	void dfs() {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
+		auto dfs_start_time = std::chrono::steady_clock::now();
+		long long dfs_iteration_count = 0;
 		for (int search_depth = 1; search_depth < MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
-			
+
 			// Reset dfs state
 			reset();
 
 			std::ofstream file("debug.txt");
 			while (depths.size() > 0) {
+				// Safety cap: bail out if the search has been running too long
+				dfs_iteration_count++;
+				if (dfs_iteration_count % 1000 == 0) {
+					auto dfs_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - dfs_start_time);
+					if (dfs_elapsed.count() > 60) {
+						std::cout << "dfs() timed out after " << dfs_elapsed.count() << "s, returning early\n";
+						return;
+					}
+				}
+
 				// Get next node to visit
 				int depth = depths.top();
 
@@ -700,11 +712,125 @@ void solve(std::vector<std::string> scramble) {
 	}
 }
 
+struct BenchmarkResult {
+	long long states_explored;
+	int max_depth_reached;
+	long long elapsed_ms;
+};
+
+void log_benchmark_result(std::ostream& out, std::string label, BenchmarkResult result) {
+	double states_per_sec = result.elapsed_ms > 0 ? (double)result.states_explored / (result.elapsed_ms / 1000.0) : 0.0;
+	out << label << ":\n";
+	out << "  States Explored: " << result.states_explored << "\n";
+	out << "  Max Depth Reached: " << result.max_depth_reached << "\n";
+	out << "  Elapsed: " << result.elapsed_ms << "ms\n";
+	out << "  States/sec: " << states_per_sec << "\n\n";
+}
+
+// Mirrors the stack-based DFS traversal in Solver::dfs(), including the banned_next_moves
+// pruning check, so that states-explored/sec can be measured for this feature in isolation.
+BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, int search_depth, std::chrono::seconds duration) {
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
+									{'D', std::unordered_set<char>{'D'}},
+									{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
+									{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
+
+	Cube cube;
+
+	std::stack<int> depths;
+	std::stack<std::list<std::string>> moves;
+	std::stack<std::vector<std::pair<int,int>>> corner_states;
+	std::stack<std::vector<std::pair<int,int>>> edge_states;
+	std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+
+	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> state = cube.get_state();
+	depths.push(0);
+	moves.push(std::list<std::string>{});
+	corner_states.push(state.first);
+	edge_states.push(state.second);
+
+	long long states_explored = 0;
+	int max_depth_reached = 0;
+	long long iteration_count = 0;
+
+	auto start_time = std::chrono::steady_clock::now();
+
+	while (depths.size() > 0) {
+		iteration_count++;
+		if (iteration_count % 1000 == 0) {
+			if (std::chrono::steady_clock::now() - start_time >= duration) {
+				break;
+			}
+		}
+
+		// Get next node to visit
+		int depth = depths.top();
+
+		std::vector<std::pair<int,int>> corners = corner_states.top();
+		std::vector<std::pair<int,int>> edges = edge_states.top();
+
+		std::list<std::string> state_moves(moves.top());
+
+		depths.pop();
+		moves.pop();
+		corner_states.pop();
+		edge_states.pop();
+
+		// Hash and store visited state
+		visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
+
+		states_explored++;
+		if (depth > max_depth_reached) max_depth_reached = depth;
+
+		// Search child nodes
+		for (std::string move : move_space) {
+			if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
+				// Avoid moving the same side twice in a row
+				continue;
+			}
+			if (depth <= search_depth) {
+				std::list<std::string> next_state_moves = state_moves;
+				// Do the move
+				cube.set_state(corners, edges);
+				cube.move(move);
+				std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+
+				// Store if we haven't been in the state before
+				if (!visited.count(std::make_pair(encodeVec1(p.first), encodeVec2(p.second)))) {
+					depths.push(depth + 1);
+					next_state_moves.push_back(move);
+					moves.push(next_state_moves);
+
+					// Store new corner/edge states
+					corner_states.push(p.first);
+					edge_states.push(p.second);
+				}
+			}
+		}
+	}
+
+	BenchmarkResult result;
+	result.states_explored = states_explored;
+	result.max_depth_reached = max_depth_reached;
+	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
+	return result;
+}
+
 int main(int argc, char** argv) {
-	std::vector<std::string> scramble = {"U2", "D2", "F'", "R2"};
-	solve(scramble);
-	
-	// benchmark_solves();
+	// This branch (bmark-3) only tracks the states-explored/sec metric for the banned_next_moves
+	// pruning feature, per spec; no size-5 solve-time benchmark is required here.
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
+	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
+
+	std::ofstream file("benchmarks.txt");
+
+	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
+	log_benchmark_result(std::cout, "Non domino reduced search (bmark-3, banned_next_moves pruning)", non_domino_result);
+	log_benchmark_result(file, "Non domino reduced search (bmark-3, banned_next_moves pruning)", non_domino_result);
+
+	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
+	log_benchmark_result(std::cout, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
+	log_benchmark_result(file, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
 
 	return 0;
 }
