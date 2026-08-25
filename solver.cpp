@@ -482,9 +482,36 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	benchmark_solves();
-	
-	// std::vector<std::string> scramble = {"F", "U'", "L2", "B2"};
-	// solve(scramble);
+	// Hardcoded scramble for gprof profiling. Empirically found to reliably solve
+	// in ~11s at DEPTH_PHASE_1=6, DEPTH_PHASE_2=12 (default depths of 5/5 are too
+	// shallow to reliably solve an 11-move scramble like this one).
+	std::vector<std::string> scramble = {"B2", "U'", "D", "L2", "D'", "L2", "F2", "B2", "R'", "L", "B"};
+
+	Cube cube = Cube();
+	auto p = cube.scramble(scramble);
+	Solver solver = Solver(cube);
+	solver.set_depth(1, 6);
+	solver.set_depth(2, 12);
+	solver.dfs(p.first);
+
+	std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+	if (!solution.second.size()) {
+		std::cout << "No solution could be found with the current depth\n";
+	} else {
+		std::cout << "First Phase:\n";
+		for (std::string move : solution.first) {
+			std::cout << move << ", ";
+		}
+		std::cout << "\nSecond Phase:\n";
+		for (std::string move : solution.second) {
+			std::cout << move << ", ";
+		}
+		std::cout << "\nSolution complete with: ";
+		solution.first.splice(solution.first.end(), solution.second);
+		for (std::string move : solution.first) {
+			std::cout << move << ", ";
+		}
+		std::cout <<"\n";
+	}
 	return 0;
 }
