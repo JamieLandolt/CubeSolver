@@ -832,15 +832,11 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 }
 
 int main(int argc, char** argv) {
-	std::ofstream file("benchmarks.txt");
-
 	BenchmarkResult full_space_result = explore_benchmark(BMARK_ALL_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Non domino reduced search (bmark-2, IDDFS)", full_space_result);
-	log_benchmark_result(file, "Non domino reduced search (bmark-2, IDDFS)", full_space_result);
 
 	BenchmarkResult domino_result = explore_benchmark(BMARK_DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-2, IDDFS)", domino_result);
-	log_benchmark_result(file, "Domino reduced search (bmark-2, IDDFS)", domino_result);
 
 	// Size-5 scramble solve benchmark
 	struct SolveResult {
@@ -881,7 +877,6 @@ int main(int argc, char** argv) {
 		}
 
 		std::cout << line.str() << "\n";
-		file << line.str() << "\n";
 	}
 
 	int success_count = 0;
@@ -926,11 +921,6 @@ int main(int argc, char** argv) {
 	}
 
 	std::cout << summary << "\n";
-	file << summary << "\n";
-
-	file << "Compared to bmark-1 (fixed-depth DFS, base commit 52e8d57): IDDFS finds solutions via progressively "
-			"deeper limited searches instead of one exhaustive fixed-depth search, so it can find a shallow solution "
-			"fast without exhausting the full fixed depth.\n";
 
 	std::ostringstream cmp;
 	cmp << "Comparison to bmark-1 (fixed-depth DFS, no IDDFS): bmark-1 solved only 4/10 size-5 scrambles (avg 4458ms "
@@ -953,7 +943,6 @@ int main(int argc, char** argv) {
 	std::string comparison_note = cmp.str();
 
 	std::cout << comparison_note << "\n";
-	file << comparison_note << "\n";
 
 	return 0;
 }
