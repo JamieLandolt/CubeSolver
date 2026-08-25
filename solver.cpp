@@ -602,48 +602,68 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
 
-	// Honest comparison vs bmark-3 (banned_next_moves pruning, vector<pair<int,int>> cube
-	// state hashed down to a uint32_t/uint64_t pair before insertion into `visited`).
-	// bmark-3's committed benchmarks.txt recorded, over the same 10s / search_depth=20 budget:
-	//   Non domino: 2,304,999 states explored, max depth reached 21, 230109 states/sec
-	//   Domino:     2,012,999 states explored, max depth reached 21, 201280 states/sec
-	std::ostringstream note;
-	note << "Comparison note vs bmark-3 (real numbers, this machine, this run):\n"
-		<< "  bmark-3 non-domino: 2304999 states, max depth 21, 230109 states/sec"
-		<< " (breadth ~= " << (2304999.0 / 21) << " states/depth-level; total_depth_searched not recorded in bmark-3)\n"
-		<< "  bmark-3 domino:     2012999 states, max depth 21, 201280 states/sec"
-		<< " (breadth ~= " << (2012999.0 / 21) << " states/depth-level)\n"
-		<< "  bmark-4 non-domino: " << non_domino_result.states_explored << " states, max depth "
-		<< non_domino_result.max_depth_reached << ", "
-		<< (non_domino_result.elapsed_ms > 0 ? (non_domino_result.states_explored * 1000.0) / non_domino_result.elapsed_ms : 0.0)
-		<< " states/sec (avg depth/state " << ((double)non_domino_result.total_depth_searched / non_domino_result.states_explored)
-		<< "; breadth ~= " << ((double)non_domino_result.states_explored / non_domino_result.max_depth_reached) << " states/depth-level)\n"
-		<< "  bmark-4 domino:     " << domino_result.states_explored << " states, max depth "
-		<< domino_result.max_depth_reached << ", "
-		<< (domino_result.elapsed_ms > 0 ? (domino_result.states_explored * 1000.0) / domino_result.elapsed_ms : 0.0)
-		<< " states/sec (avg depth/state " << ((double)domino_result.total_depth_searched / domino_result.states_explored)
-		<< "; breadth ~= " << ((double)domino_result.states_explored / domino_result.max_depth_reached) << " states/depth-level)\n"
-		<< "\n"
-		<< "  Root cause of the earlier depth-7-11-vs-21 anomaly: explore_benchmark() previously wrapped\n"
-		<< "  its DFS in an outer `for (int max_depth = 0; max_depth <= search_depth; max_depth++)` loop\n"
-		<< "  that reset the stack and `visited` set from scratch on every iteration -- an iterative-\n"
-		<< "  deepening restart that bmark-3's explore_benchmark() does not have (it runs one continuous\n"
-		<< "  DFS with a single `visited` set to the search_depth cap). That extra loop was a benchmark-\n"
-		<< "  harness bug introduced when bmark-4's explore_benchmark() was written, not a property of the\n"
-		<< "  solver: it forced repeated re-exploration of the same shallow states at every outer\n"
-		<< "  iteration, consuming the 10s budget without ever reaching a deep, single DFS pass. It has\n"
-		<< "  been removed so explore_benchmark() now matches bmark-3's single-pass structure. Separately,\n"
-		<< "  move/inverse round-trip tests (R,R',L,L',U,U',D,D',F,F',B,B' from solved) confirmed the\n"
-		<< "  bit-shift corner/edge encoding returns to the exact solved long values bit-for-bit after\n"
-		<< "  every move+inverse pair, so no evidence of a canonicalisation or hashing bug was found.\n"
-		<< "  Either way, raw states/sec is only one proxy for whether this branch's bit-shift/long state\n"
-		<< "  representation was a successful optimisation. This benchmark's actual intent per the bmark-4\n"
-		<< "  commit was correctness of the bit-shift representation, not exploration throughput -- the\n"
-		<< "  real payoff of two `long`s over two `vector<pair<int,int>>`s (no per-move heap allocation)\n"
-		<< "  shows up in memory/allocation overhead during real solves, which this synthetic exploration\n"
-		<< "  benchmark does not directly measure.\n";
+	// Solve-time benchmark: 10 solves of a fixed scramble size (bmark-4, bit-shift/long state)
+	const int NUM_SCRAMBLES = 10;
+	const int SCRAMBLE_SIZE = 5;
+	long long total_ms = 0;
+	int solved_count = 0;
+	std::vector<long long> solve_times_ms;
+	std::vector<size_t> solve_move_counts;
 
-	std::cout << "\n" << note.str();
+	Cube cube;
+	Solver solver = Solver(cube);
+
+	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-4, bit-shift/long state) ===\n";
+
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
+		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(SCRAMBLE_SIZE, solver.DEPTH_PHASE_1);
+		std::vector<std::string> scramble = p.first;
+
+		solver.reset_full();
+
+		auto solve_start = std::chrono::steady_clock::now();
+		solver.dfs(scramble);
+		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::string scramble_str;
+		for (const std::string& mv : scramble) {
+			scramble_str += mv + ", ";
+		}
+
+		std::cout << "Solve " << (n + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND")
+			<< " | Time: " << solve_ms << "ms | Scramble: " << scramble_str << "\n";
+
+		if (solved) {
+			total_ms += solve_ms;
+			solved_count++;
+			solve_times_ms.push_back(solve_ms);
+			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		}
+	}
+
+	std::cout << "Solved " << solved_count << "/" << NUM_SCRAMBLES << " scrambles of size " << SCRAMBLE_SIZE
+		<< (solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
+		                      : ". No successful solves to average.\n");
+
+	if (solved_count > 0) {
+		std::vector<long long> sorted_times(solve_times_ms);
+		std::sort(sorted_times.begin(), sorted_times.end());
+		long long median_ms = sorted_times[sorted_times.size() / 2];
+		long long min_ms = sorted_times.front();
+		long long max_ms = sorted_times.back();
+
+		size_t total_moves = 0;
+		for (size_t mc : solve_move_counts) {
+			total_moves += mc;
+		}
+		double avg_moves = (double)total_moves / solve_move_counts.size();
+
+		std::cout << "Median solve time: " << median_ms << "ms | Min: " << min_ms << "ms | Max: " << max_ms
+			<< "ms | Average moves in solution: " << avg_moves << "\n";
+	}
 
 	return 0;
 }
