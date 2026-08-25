@@ -346,7 +346,7 @@ public:
 	Solver(Cube& external_cube) : cube(external_cube) {
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
-		edge_orientations = orientations.first;
+		edge_orientations = orientations.second;
 	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
