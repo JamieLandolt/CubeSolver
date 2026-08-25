@@ -392,8 +392,6 @@ public:
 		long long nodes_since_time_check = 0;
 
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
-			std::cout << "Searching Depth: " << search_depth << "\n";
-
 			// Reset dfs state
 			reset_dfs(scramble);
 
