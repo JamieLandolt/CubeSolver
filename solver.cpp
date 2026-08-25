@@ -601,18 +601,14 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 }
 
 int main(int argc, char** argv) {
-	std::ofstream file("benchmarks.txt");
-
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
 	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Non domino reduced search (bmark-4, bit-shift/long state)", non_domino_result);
-	log_benchmark_result(file, "Non domino reduced search (bmark-4, bit-shift/long state)", non_domino_result);
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
-	log_benchmark_result(file, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
 
 	// Honest comparison vs bmark-3 (banned_next_moves pruning, vector<pair<int,int>> cube
 	// state hashed down to a uint32_t/uint64_t pair before insertion into `visited`).
@@ -656,7 +652,6 @@ int main(int argc, char** argv) {
 		<< "  benchmark does not directly measure.\n";
 
 	std::cout << "\n" << note.str();
-	file << "\n" << note.str();
 
 	return 0;
 }
