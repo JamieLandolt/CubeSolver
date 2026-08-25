@@ -177,8 +177,8 @@ private:
 									{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 	
 public:
-	int DEPTH_PHASE_1 = 5;
-	int DEPTH_PHASE_2 = 5;
+	int DEPTH_PHASE_1 = 12;
+	int DEPTH_PHASE_2 = 18;
 
 	Solver(Cube& external_cube) : cube(external_cube) {}
 
@@ -602,67 +602,107 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
 
-	// Solve-time benchmark: 10 solves of a fixed scramble size (bmark-4, bit-shift/long state)
+	// Solve-time table across scramble sizes: 10 solves per size (bmark-4, bit-shift/long state)
 	const int NUM_SCRAMBLES = 10;
-	const int SCRAMBLE_SIZE = 5;
-	long long total_ms = 0;
-	int solved_count = 0;
-	std::vector<long long> solve_times_ms;
-	std::vector<size_t> solve_move_counts;
 
 	Cube cube;
 	Solver solver = Solver(cube);
 
-	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-4, bit-shift/long state) ===\n";
+	struct SizeResult {
+		int size;
+		int solved_count;
+		double avg_ms;
+		long long median_ms;
+		long long min_ms;
+		long long max_ms;
+		double avg_moves;
+	};
+	std::vector<SizeResult> size_results;
 
-	for (int n = 0; n < NUM_SCRAMBLES; n++) {
-		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(SCRAMBLE_SIZE, solver.DEPTH_PHASE_1);
-		std::vector<std::string> scramble = p.first;
+	std::cout << "=== Solve-time table (bmark-4, bit-shift/long state) ===\n";
 
-		solver.reset_full();
+	for (int scramble_size = 5; ; scramble_size += 5) {
+		long long total_ms = 0;
+		int solved_count = 0;
+		std::vector<long long> solve_times_ms;
+		std::vector<size_t> solve_move_counts;
 
-		auto solve_start = std::chrono::steady_clock::now();
-		solver.dfs(scramble);
-		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+		std::cout << "=== Solves of size " << scramble_size << " ===\n";
 
-		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
-		bool solved = solution.second.size() > 0;
+		for (int n = 0; n < NUM_SCRAMBLES; n++) {
+			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
+			std::vector<std::string> scramble = p.first;
 
-		std::string scramble_str;
-		for (const std::string& mv : scramble) {
-			scramble_str += mv + ", ";
+			solver.reset_full();
+
+			auto solve_start = std::chrono::steady_clock::now();
+			solver.dfs(scramble);
+			auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+			std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+			bool solved = solution.second.size() > 0;
+
+			std::string scramble_str;
+			for (const std::string& mv : scramble) {
+				scramble_str += mv + ", ";
+			}
+
+			std::cout << "Solve " << (n + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND")
+				<< " | Time: " << solve_ms << "ms | Scramble: " << scramble_str << "\n";
+
+			if (solved) {
+				total_ms += solve_ms;
+				solved_count++;
+				solve_times_ms.push_back(solve_ms);
+				solve_move_counts.push_back(solution.first.size() + solution.second.size());
+			}
 		}
 
-		std::cout << "Solve " << (n + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND")
-			<< " | Time: " << solve_ms << "ms | Scramble: " << scramble_str << "\n";
+		std::cout << "Solved " << solved_count << "/" << NUM_SCRAMBLES << " scrambles of size " << scramble_size
+			<< (solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
+			                      : ". No successful solves to average.\n");
 
-		if (solved) {
-			total_ms += solve_ms;
-			solved_count++;
-			solve_times_ms.push_back(solve_ms);
-			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		SizeResult result{scramble_size, solved_count, 0.0, 0, 0, 0, 0.0};
+
+		if (solved_count > 0) {
+			std::vector<long long> sorted_times(solve_times_ms);
+			std::sort(sorted_times.begin(), sorted_times.end());
+			long long median_ms = sorted_times[sorted_times.size() / 2];
+			long long min_ms = sorted_times.front();
+			long long max_ms = sorted_times.back();
+
+			size_t total_moves = 0;
+			for (size_t mc : solve_move_counts) {
+				total_moves += mc;
+			}
+			double avg_moves = (double)total_moves / solve_move_counts.size();
+
+			std::cout << "Median solve time: " << median_ms << "ms | Min: " << min_ms << "ms | Max: " << max_ms
+				<< "ms | Average moves in solution: " << avg_moves << "\n";
+
+			result.avg_ms = (double)total_ms / solved_count;
+			result.median_ms = median_ms;
+			result.min_ms = min_ms;
+			result.max_ms = max_ms;
+			result.avg_moves = avg_moves;
+		}
+
+		size_results.push_back(result);
+
+		// Stop scaling once solves get too slow or the solve rate drops off badly
+		bool too_slow = solved_count > 0 && result.avg_ms > 30000.0;
+		bool low_solve_rate = solved_count < (NUM_SCRAMBLES / 2);
+		if (too_slow || low_solve_rate) {
+			break;
 		}
 	}
 
-	std::cout << "Solved " << solved_count << "/" << NUM_SCRAMBLES << " scrambles of size " << SCRAMBLE_SIZE
-		<< (solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
-		                      : ". No successful solves to average.\n");
-
-	if (solved_count > 0) {
-		std::vector<long long> sorted_times(solve_times_ms);
-		std::sort(sorted_times.begin(), sorted_times.end());
-		long long median_ms = sorted_times[sorted_times.size() / 2];
-		long long min_ms = sorted_times.front();
-		long long max_ms = sorted_times.back();
-
-		size_t total_moves = 0;
-		for (size_t mc : solve_move_counts) {
-			total_moves += mc;
-		}
-		double avg_moves = (double)total_moves / solve_move_counts.size();
-
-		std::cout << "Median solve time: " << median_ms << "ms | Min: " << min_ms << "ms | Max: " << max_ms
-			<< "ms | Average moves in solution: " << avg_moves << "\n";
+	std::cout << "\n=== Summary table (bmark-4, bit-shift/long state) ===\n";
+	std::cout << "Size | Solved | Avg(ms) | Median(ms) | Min(ms) | Max(ms) | Avg Moves\n";
+	for (const SizeResult& r : size_results) {
+		std::cout << r.size << " | " << r.solved_count << "/" << NUM_SCRAMBLES << " | "
+			<< r.avg_ms << " | " << r.median_ms << " | " << r.min_ms << " | " << r.max_ms
+			<< " | " << r.avg_moves << "\n";
 	}
 
 	return 0;
