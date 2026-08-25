@@ -323,14 +323,24 @@ public:
 	void dfs(std::vector<std::string> scramble) {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
+		auto dfs_start_time = std::chrono::steady_clock::now();
+		long long dfs_iterations = 0;
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
-			
+
 			// Reset dfs state
 			reset_dfs(scramble);
 
 			std::ofstream file("debug.txt");
 			while (depths.size() > 0) {
+				// Wall-clock safety cap: abort if a single dfs() call runs too long
+				dfs_iterations++;
+				if (dfs_iterations % 1000 == 0 &&
+					std::chrono::steady_clock::now() - dfs_start_time > std::chrono::seconds(60)) {
+					std::cout << "dfs() timed out after 60 seconds\n";
+					return;
+				}
+
 				// Get next node to visit
 				int depth = depths.top();
 
@@ -346,7 +356,7 @@ public:
 
 				// Hash and store visited state
 				visited.insert({corners, edges});
-				
+
 				// Check for target state
 				int phase_complete = check_state(corners, edges);
 
@@ -580,8 +590,139 @@ void benchmark_solves() {
 	}
 }
 
+struct BenchmarkResult {
+	long long states_explored;
+	int max_depth_reached;
+	long long elapsed_ms;
+};
+
+// Mirrors Solver::dfs()'s traversal mechanics (visited-set DFS via stacks, the
+// same-side-twice move ban, and the search-path pruning added in this commit)
+// so that states/sec is measured against the actual pruning behaviour being
+// benchmarked, rather than a stripped-down traversal.
+//
+// The pruning check needs a real corner/edge state to look up via
+// cube.ori_to_int(), so each run (and each reseed once a branch is
+// exhausted) starts from a scrambled cube rather than the solved state.
+BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, int search_depth, std::chrono::seconds duration) {
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
+								{'D', std::unordered_set<char>{'D'}},
+								{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
+								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
+
+	Cube cube = Cube();
+
+	std::stack<int> depths;
+	std::stack<char> last_move_chars;
+	std::stack<long> corner_states;
+	std::stack<long> edge_states;
+	std::unordered_set<std::pair<long,long>,StateHash> visited;
+
+	auto reseed = [&]() {
+		std::stack<int> empty_depths;
+		std::swap(depths, empty_depths);
+		std::stack<char> empty_last;
+		std::swap(last_move_chars, empty_last);
+		std::stack<long> empty_corners;
+		std::swap(corner_states, empty_corners);
+		std::stack<long> empty_edges;
+		std::swap(edge_states, empty_edges);
+		visited.clear();
+
+		std::pair<std::vector<std::string>,std::pair<long,long>> scrambled = cube.random_scramble(20, 9);
+		depths.push(0);
+		last_move_chars.push('\0');
+		corner_states.push(scrambled.second.first);
+		edge_states.push(scrambled.second.second);
+	};
+
+	reseed();
+
+	BenchmarkResult result{0, 0, 0};
+	auto start = std::chrono::steady_clock::now();
+	long long iterations = 0;
+
+	while (true) {
+		if (depths.size() == 0) {
+			// Branch exhausted before the duration elapsed; reseed from a
+			// fresh scramble to keep exploring.
+			reseed();
+		}
+
+		int depth = depths.top();
+		char last_move = last_move_chars.top();
+		long corners = corner_states.top();
+		long edges = edge_states.top();
+
+		depths.pop();
+		last_move_chars.pop();
+		corner_states.pop();
+		edge_states.pop();
+
+		visited.insert({corners, edges});
+
+		result.states_explored++;
+		if (depth > result.max_depth_reached) {
+			result.max_depth_reached = depth;
+		}
+
+		// Same pruning check as Solver::dfs(): if the current state needs
+		// more moves to solve than remain in the search budget, don't
+		// bother expanding its children.
+		std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+
+		if (std::max(min_sol_moves.first, min_sol_moves.second) <= search_depth - depth) {
+			for (const std::string& mv : move_space) {
+				// Avoid moving the same side twice in a row
+				if (last_move != '\0' && banned_next_moves[last_move].count(mv[0])) {
+					continue;
+				}
+				if (depth < search_depth) {
+					std::pair<long,long> next_state = cube.move(mv, corners, edges);
+					if (!visited.count(next_state)) {
+						depths.push(depth + 1);
+						last_move_chars.push(mv[0]);
+						corner_states.push(next_state.first);
+						edge_states.push(next_state.second);
+					}
+				}
+			}
+		}
+
+		iterations++;
+		if (iterations % 1000 == 0 && std::chrono::steady_clock::now() - start >= duration) {
+			break;
+		}
+	}
+
+	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	return result;
+}
+
+void log_benchmark_result(std::ostream& out, const std::string& label, const BenchmarkResult& result) {
+	double states_per_sec = result.elapsed_ms > 0 ? (double)result.states_explored / (result.elapsed_ms / 1000.0) : 0.0;
+	out << label << ":\n";
+	out << "  States explored: " << result.states_explored << "\n";
+	out << "  Max depth reached: " << result.max_depth_reached << "\n";
+	out << "  Elapsed ms: " << result.elapsed_ms << "\n";
+	out << "  States/sec: " << states_per_sec << "\n\n";
+}
+
 int main(int argc, char** argv) {
-	benchmark_solves();
+	std::ofstream file("benchmarks.txt");
+
+	std::vector<std::string> non_domino_moves = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
+	std::vector<std::string> domino_moves = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
+
+	int search_depth = 20;
+
+	BenchmarkResult non_domino_result = explore_benchmark(non_domino_moves, search_depth, std::chrono::seconds(10));
+	log_benchmark_result(file, "Non domino reduced search (bmark-5, search-path pruning)", non_domino_result);
+	log_benchmark_result(std::cout, "Non domino reduced search (bmark-5, search-path pruning)", non_domino_result);
+
+	BenchmarkResult domino_result = explore_benchmark(domino_moves, search_depth, std::chrono::seconds(10));
+	log_benchmark_result(file, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
+	log_benchmark_result(std::cout, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
 
 	return 0;
 }
