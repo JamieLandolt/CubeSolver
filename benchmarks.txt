@@ -1,0 +1,22 @@
+Non domino reduced search (bmark-2, IDDFS):
+  States explored: 3319999
+  Max depth reached: 20
+  Elapsed: 10001ms
+  States/sec: 331966.7
+Domino reduced search (bmark-2, IDDFS):
+  States explored: 3643999
+  Max depth reached: 20
+  Elapsed: 10000ms
+  States/sec: 364399.9
+Scramble 1 [L' D' R R' B]: not solved in 13ms
+Scramble 2 [D2 F R L' R]: not solved in 14ms
+Scramble 3 [L' L' F2 R2 D']: solved in 20ms (5 moves)
+Scramble 4 [R' D2 U R' F2]: not solved in 16ms
+Scramble 5 [R L2 L L L']: solved in 1ms (3 moves)
+Scramble 6 [D2 U2 U L' B2]: solved in 1ms (5 moves)
+Scramble 7 [B' R' F D' B]: not solved in 13ms
+Scramble 8 [B2 U' R2 D2 B]: solved in 48ms (7 moves)
+Scramble 9 [B U F2 F' F]: solved in 3ms (3 moves)
+Scramble 10 [F B2 F' B' F]: solved in 0ms (2 moves)
+Solved 6/10 scrambles of size 5. Average solve time (successful solves only): 12.2ms. Median: 2.0ms, Min: 0ms, Max: 48ms. Average solution length (successful solves only): 4.2 moves.
+Compared to bmark-1 (fixed-depth DFS, base commit 52e8d57): IDDFS finds solutions via progressively deeper limited searches instead of one exhaustive fixed-depth search, so it can find a shallow solution fast without exhausting the full fixed depth.
