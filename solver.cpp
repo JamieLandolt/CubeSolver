@@ -635,10 +635,12 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	benchmark_solves();
-	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
+	// Hardcoded 25-move scramble empirically found to solve quickly (well under
+	// a second of actual search time) on this commit (the most optimized
+	// version), for gprof profiling purposes.
+	std::vector<std::string> scramble = {"D", "F2", "U", "L2", "D", "B2", "D'", "F2", "B2", "D'", "R2", "D2", "L2", "B'", "L", "B", "U'", "D", "F", "L'", "F", "D2", "L'", "U2", "L'"};
 
-	// solve(scramble);
+	solve(scramble);
 
 	return 0;
 }
