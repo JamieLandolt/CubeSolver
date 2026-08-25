@@ -753,122 +753,58 @@ void benchmark_states_explored() {
 	log_explore_result("Domino reduced search (bmark-7, final)", domino_result);
 }
 
-struct ScalingResult {
-	int scramble_size;
-	int solved_count;
-	long avg_time_ms;
-	long median_time_ms;
-	long min_time_ms;
-	long max_time_ms;
-	double avg_moves;
-};
-
-void log_scaling_result(const ScalingResult& result) {
-	std::cout << "Scramble Size " << result.scramble_size << " (bmark-7, final): Solved " << result.solved_count << "/10 | "
-			   << "Avg: " << result.avg_time_ms << "ms | Median: " << result.median_time_ms << "ms | "
-			   << "Min: " << result.min_time_ms << "ms | Max: " << result.max_time_ms << "ms | "
-			   << "Avg Moves: " << result.avg_moves << "\n";
-}
-
-void log_final_comparison() {
-	std::string note =
-		"\n=== Final comparison across all bmark branches (real measured numbers) ===\n"
-		"States/sec (non-domino / domino-reduced), each measured on this machine, single run:\n"
-		"  bmark-1 (52e8d57, fixed-depth DFS):          ~460k / ~505k    (max depth 20/20)\n"
-		"  bmark-2 (a0ff182, IDDFS):                    ~411k / ~384k    (max depth 20/20)\n"
-		"  bmark-3 (0949b4d, banned_next_moves):        ~208k-316k / ~185k-322k (max depth 21/21)\n"
-		"  bmark-4 (97509cd, bit-shift/long state):     ~2.07M / ~2.28M  (max depth 21/21)\n"
-		"  bmark-5 (02e9956, search-path pruning):      ~2.46M / ~2.43M  (max depth 20/18)\n"
-		"  bmark-6 (d490372, DR-space optimisation):    ~457k / ~397k    (max depth 20/20)\n"
-		"  bmark-7 (8e357ad, final, this branch):       see the two results printed above\n"
-		"(bmark-4/6/7's numbers reflect a fix to a benchmark-harness bug shared by all three -\n"
-		"an outer per-depth restart loop that reset the visited set from scratch every iteration,\n"
-		"capping max depth reached far below the real cap; removing it made all three branches\n"
-		"comparable to bmark-3/5's always-correct single-pass structure.)\n"
-		"\n"
-		"Raw states/sec alone is NOT a reliable progress signal across branches - it depends on\n"
-		"the search strategy in play (a single exhaustive DFS vs IDDFS's repeated shallow restarts\n"
-		"vs a pruning check that cuts off whole subtrees before they're even generated/hashed), not\n"
-		"just how fast one state can be processed. The metric that actually tracks the point of this\n"
-		"project - solving cubes faster - is solve time:\n"
-		"  bmark-1: only 4-5/10 size-5 scrambles solved, average ~1800-4500ms among successes\n"
-		"           (many of the rest timed out at the 60s safety cap without finding a solution).\n"
-		"  bmark-2: 6-7/10 solved, average ~7-12ms - both more reliable AND roughly 2-3 orders of\n"
-		"           magnitude faster, despite exploring FEWER raw states per second than bmark-1 in\n"
-		"           the states-explored benchmark. IDDFS finds a shallow solution the moment one\n"
-		"           depth level reveals it, instead of exhaustively searching one fixed depth that\n"
-		"           may be far deeper than necessary (or, worse, insufficient for a given scramble).\n"
-		"  bmark-7 (this branch): size-5 scrambles solve in ~0ms average, and the solver now scales\n"
-		"           to reliably solving scrambles up to size 30 while staying under a ~10s average -\n"
-		"           a regime bmark-1 could not even reach for size 5.\n"
-		"\n"
-		"Read together with the depth stats above: bmark-3's pruning and bmark-5/6's search-path\n"
-		"pruning both cut average states/sec (because a meaningful fraction of branching is skipped\n"
-		"before it ever becomes a hashed/visited state), yet those same branches reach much deeper\n"
-		"max search depth in the same 10s window than bmark-1/bmark-2 (up to 20-21 vs 20 hit via a\n"
-		"different exploration pattern) - the search is doing less wasted work per unit of real\n"
-		"progress, which is exactly what the solve-time numbers above confirm directly.\n";
-	std::cout << note;
-}
-
-// Repurposes the existing Timer/random_scramble machinery from benchmark_solves() to find,
-// for this commit, how far scramble size can scale while solves stay comfortably under 10s.
-void benchmark_scaling_solve_times() {
+// Solve-time benchmark at a single, well-chosen scramble size (bmark-1/bmark-2 reporting style):
+// solved-count, avg/median/min/max solve time, and avg moves in solution.
+void benchmark_solve_times(int scramble_size) {
 	Cube cube;
 	Solver solver = Solver(cube);
 	Timer timer = Timer();
 
 	const int NUM_SOLVES = 10;
-	const long AVG_TIME_LIMIT_MS = 10000;
+	std::vector<long> times;
+	std::vector<int> move_counts;
+	int solved_count = 0;
 
-	int scramble_size = 5;
-	while (true) {
-		std::vector<long> times;
-		std::vector<int> move_counts;
-		int solved_count = 0;
+	std::cout << "=== Solves of size " << scramble_size << " (bmark-7, final) ===\n";
 
-		for (int solve_num = 0; solve_num < NUM_SOLVES; solve_num++) {
-			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
-			std::vector<std::string> scramble = p.first;
+	for (int solve_num = 0; solve_num < NUM_SOLVES; solve_num++) {
+		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
+		std::vector<std::string> scramble = p.first;
 
-			solver.reset_full();
-			solver.reset_dfs(scramble);
+		solver.reset_full();
+		solver.reset_dfs(scramble);
 
-			timer.start();
-			solver.dfs(scramble);
-			auto solve_time = timer.stop(scramble_size);
+		timer.start();
+		solver.dfs(scramble);
+		auto solve_time = timer.stop(scramble_size);
 
-			std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
-			if (solution.second.size()) {
-				solved_count++;
-				times.push_back(solve_time.count());
-				move_counts.push_back((int)(solution.first.size() + solution.second.size()));
-			}
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::cout << "Solve " << (solve_num + 1) << ": " << (solved ? "SOLVED" : "NO SOLUTION FOUND")
+				   << " | Time: " << solve_time.count() << "ms\n";
+
+		if (solved) {
+			solved_count++;
+			times.push_back(solve_time.count());
+			move_counts.push_back((int)(solution.first.size() + solution.second.size()));
 		}
+	}
 
-		ScalingResult result;
-		result.scramble_size = scramble_size;
-		result.solved_count = solved_count;
-		result.avg_time_ms = times.size() ? timer.avg(times) : 0;
-		result.median_time_ms = times.size() ? timer.median(times) : 0;
-		result.min_time_ms = times.size() ? *std::min_element(times.begin(), times.end()) : 0;
-		result.max_time_ms = times.size() ? *std::max_element(times.begin(), times.end()) : 0;
-		result.avg_moves = move_counts.size() ? (double)std::accumulate(move_counts.begin(), move_counts.end(), 0) / move_counts.size() : 0.0;
-
-		log_scaling_result(result);
-
-		if (solved_count == 0 || result.avg_time_ms > AVG_TIME_LIMIT_MS) {
-			break;
-		}
-
-		scramble_size += 5;
+	std::cout << "Solved " << solved_count << "/" << NUM_SOLVES << " scrambles of size " << scramble_size;
+	if (solved_count > 0) {
+		std::cout << ". Average solve time (successful solves only): " << timer.avg(times) << "ms\n";
+		double avg_moves = (double)std::accumulate(move_counts.begin(), move_counts.end(), 0) / move_counts.size();
+		std::cout << "Median solve time: " << timer.median(times) << "ms | Min: " << *std::min_element(times.begin(), times.end())
+				   << "ms | Max: " << *std::max_element(times.begin(), times.end()) << "ms | Average moves in solution: " << avg_moves << "\n";
+	} else {
+		std::cout << ". No successful solves to average.\n";
 	}
 }
 
 int main(int argc, char** argv) {
 	benchmark_states_explored();
-	benchmark_scaling_solve_times();
-	log_final_comparison();
+	benchmark_solve_times(50);
 	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
 
 	// solve(scramble);
