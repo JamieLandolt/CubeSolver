@@ -10,6 +10,9 @@
 #include <functional>
 #include <algorithm>
 #include <cstdint>
+#include <chrono>
+#include <fstream>
+#include <random>
 
 int RL_CORNER_MAPPING(int x) {
 	if (x == 0) {
@@ -348,10 +351,15 @@ public:
 		int i = 0;
 		std::vector<std::string> move_space = MOVES;
 		int search_depth = DEPTH_PHASE_1;
+		auto dfs_bench_start = std::chrono::steady_clock::now();
 		while (depths.size() > 0) {
 			i++;
 			if (i % 100000 == 0) {
 				std::cout << i << "\n";
+			}
+			if (i % 1000 == 0 && std::chrono::steady_clock::now() - dfs_bench_start > std::chrono::seconds(60)) {
+				std::cout << "Timed out after 60s (" << i << " iterations)\n";
+				return;
 			}
 
 			// Get next node to visit
@@ -490,35 +498,185 @@ public:
 	}
 };
 
-int main(int argc, char** argv) {
-	Cube cube = Cube();
-	// std::vector<std::string> scramble = {"R", "U", "F", "R2", "B'", "D2"};
-	std::vector<std::string> scramble = {"U", "F", "R2", "B'", "D2"};
-	cube.execute_moves(scramble);
-	Solver solver = Solver(cube);
-	solver.dfs();
+// --- Benchmarking additions (bmark-1) ---
+// Minimal, additive instrumentation: does not alter existing solving logic beyond
+// the dfs() timeout guard added above. Measures raw DFS exploration throughput
+// (states explored in a fixed time window) for the non domino reduced move space
+// (full MOVES, as used in phase 1 of dfs()) and the domino reduced move space
+// (DOMINO_MOVES, as used in phase 2 of dfs()), plus average solve time over
+// several size-5 scrambles using the existing Solver/dfs() path unmodified.
 
-	std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
-	if (!solution.second.size()) {
-		std::cout << "No solution could be found with the current depth\n";
-	} else {
-		std::cout << "First\n";
-		for (std::string move : solution.first) {
-			std::cout << move << ", ";
+struct BenchmarkResult {
+	long long states_explored = 0;
+	int max_depth_reached = 0;
+	long long elapsed_ms = 0;
+};
+
+// Mirrors the traversal mechanics of Solver::dfs() (stack-based DFS with a
+// visited-state hash set) but is not tied to a solve goal, so it can measure
+// raw states-explored throughput for a given move space over a fixed duration.
+BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, int search_depth, std::chrono::seconds duration) {
+	Cube cube = Cube();
+	BenchmarkResult result;
+
+	std::stack<int> depths;
+	std::stack<std::vector<std::pair<int,int>>> corner_states;
+	std::stack<std::vector<std::pair<int,int>>> edge_states;
+	std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+
+	std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> start_state = cube.get_state();
+	depths.push(0);
+	corner_states.push(start_state.first);
+	edge_states.push(start_state.second);
+
+	auto start = std::chrono::steady_clock::now();
+
+	while (depths.size() > 0) {
+		if (result.states_explored % 1000 == 0 && std::chrono::steady_clock::now() - start >= duration) {
+			break;
 		}
-		std::cout << "Second\n";
-		for (std::string move : solution.second) {
-			std::cout << move << ", ";
+
+		int depth = depths.top();
+		std::vector<std::pair<int,int>> corners(corner_states.top());
+		std::vector<std::pair<int,int>> edges(edge_states.top());
+
+		depths.pop();
+		corner_states.pop();
+		edge_states.pop();
+
+		visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
+
+		result.states_explored++;
+		if (depth > result.max_depth_reached) {
+			result.max_depth_reached = depth;
 		}
-		std::cout << "Done\n";
-		std::cout << "Solution complete with: ";
-		solution.first.splice(solution.first.end(), solution.second);
-		for (std::string move : solution.first) {
-			std::cout << move << ", ";
+
+		if (depth + 1 <= search_depth) {
+			for (const std::string& move : move_space) {
+				cube.set_state(corners, edges);
+				cube.move(move);
+				std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+				if (!visited.count(std::make_pair(encodeVec1(p.first), encodeVec2(p.second)))) {
+					depths.push(depth + 1);
+					corner_states.push(p.first);
+					edge_states.push(p.second);
+				}
+			}
 		}
-		std::cout <<"\n";
 	}
 
-	
+	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	return result;
+}
+
+void log_benchmark_result(std::ostream& out, const std::string& label, const BenchmarkResult& r) {
+	out << "=== " << label << " ===\n";
+	out << "States explored: " << r.states_explored << "\n";
+	out << "Max depth reached: " << r.max_depth_reached << "\n";
+	out << "Elapsed: " << r.elapsed_ms << "ms\n";
+	if (r.elapsed_ms > 0) {
+		out << "States/sec: " << (r.states_explored * 1000.0 / r.elapsed_ms) << "\n";
+	}
+	out << "\n";
+}
+
+// Plain uniform-random scramble generator (no move-pruning heuristics -
+// those are a later benchmark's feature, kept out here for a fair baseline).
+std::vector<std::string> random_scramble(int scramble_size, std::mt19937& gen, const std::vector<std::string>& move_pool) {
+	std::uniform_int_distribution<> dist(0, move_pool.size() - 1);
+	std::vector<std::string> scramble_moves;
+	for (int i = 0; i < scramble_size; i++) {
+		scramble_moves.push_back(move_pool[dist(gen)]);
+	}
+	return scramble_moves;
+}
+
+int main(int argc, char** argv) {
+	std::ofstream file("benchmarks.txt");
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2", "R'"};
+	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
+	const int SEARCH_DEPTH_CAP = 20;
+	const std::chrono::seconds BENCH_DURATION(10);
+
+	std::cout << "Running non domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
+	BenchmarkResult regular = explore_benchmark(MOVES, SEARCH_DEPTH_CAP, BENCH_DURATION);
+	log_benchmark_result(std::cout, "Non domino reduced search (bmark-1)", regular);
+	log_benchmark_result(file, "Non domino reduced search (bmark-1)", regular);
+
+	std::cout << "Running domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
+	BenchmarkResult domino = explore_benchmark(DOMINO_MOVES, SEARCH_DEPTH_CAP, BENCH_DURATION);
+	log_benchmark_result(std::cout, "Domino reduced search (bmark-1)", domino);
+	log_benchmark_result(file, "Domino reduced search (bmark-1)", domino);
+
+	// Average time to solve scrambles of size 5 (existing Solver/dfs() path, unmodified)
+	std::mt19937 gen(std::random_device{}());
+	const int NUM_SCRAMBLES = 10;
+	const int SCRAMBLE_SIZE = 5;
+	long long total_ms = 0;
+	int solved_count = 0;
+	std::vector<long long> solve_times_ms;
+	std::vector<size_t> solve_move_counts;
+
+	file << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-1, DFS fixed-depth) ===\n";
+	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-1, DFS fixed-depth) ===\n";
+
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
+		std::vector<std::string> scramble = random_scramble(SCRAMBLE_SIZE, gen, MOVES);
+
+		Cube cube = Cube();
+		cube.execute_moves(scramble);
+		Solver solver = Solver(cube);
+
+		auto solve_start = std::chrono::steady_clock::now();
+		solver.dfs();
+		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::string scramble_str;
+		for (const std::string& mv : scramble) {
+			scramble_str += mv + ", ";
+		}
+
+		std::string line = "Solve " + std::to_string(n + 1) + ": " + (solved ? "SOLVED" : "NO SOLUTION FOUND") +
+			" | Time: " + std::to_string(solve_ms) + "ms | Scramble: " + scramble_str + "\n";
+		file << line;
+		std::cout << line;
+
+		if (solved) {
+			total_ms += solve_ms;
+			solved_count++;
+			solve_times_ms.push_back(solve_ms);
+			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		}
+	}
+
+	std::string summary = "Solved " + std::to_string(solved_count) + "/" + std::to_string(NUM_SCRAMBLES) +
+		" scrambles of size " + std::to_string(SCRAMBLE_SIZE) +
+		(solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
+		                   : ". No successful solves to average.\n");
+	file << summary;
+	std::cout << summary;
+
+	if (solved_count > 0) {
+		std::vector<long long> sorted_times(solve_times_ms);
+		std::sort(sorted_times.begin(), sorted_times.end());
+		long long median_ms = sorted_times[sorted_times.size() / 2];
+		long long min_ms = sorted_times.front();
+		long long max_ms = sorted_times.back();
+
+		size_t total_moves = 0;
+		for (size_t mc : solve_move_counts) {
+			total_moves += mc;
+		}
+		double avg_moves = (double)total_moves / solve_move_counts.size();
+
+		std::string extra_stats = "Median solve time: " + std::to_string(median_ms) + "ms | Min: " + std::to_string(min_ms) +
+			"ms | Max: " + std::to_string(max_ms) + "ms | Average moves in solution: " + std::to_string(avg_moves) + "\n";
+		file << extra_stats;
+		std::cout << extra_stats;
+	}
+
 	return 0;
 }

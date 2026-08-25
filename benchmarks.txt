@@ -1,0 +1,25 @@
+=== Non domino reduced search (bmark-1) ===
+States explored: 4166000
+Max depth reached: 20
+Elapsed: 10001ms
+States/sec: 416558
+
+=== Domino reduced search (bmark-1) ===
+States explored: 4647000
+Max depth reached: 20
+Elapsed: 10002ms
+States/sec: 464607
+
+=== Solves of size 5 (bmark-1, DFS fixed-depth) ===
+Solve 1: SOLVED | Time: 540ms | Scramble: B2, U', B', D', F2, 
+Solve 2: SOLVED | Time: 1882ms | Scramble: B2, B, L2, R2, U, 
+Solve 3: NO SOLUTION FOUND | Time: 2189ms | Scramble: L', D', R', U, L, 
+Solve 4: NO SOLUTION FOUND | Time: 60005ms | Scramble: R', B2, L2, D2, L2, 
+Solve 5: NO SOLUTION FOUND | Time: 1331ms | Scramble: B', L', L', R', U, 
+Solve 6: NO SOLUTION FOUND | Time: 1411ms | Scramble: L', U', F', B', D', 
+Solve 7: NO SOLUTION FOUND | Time: 1474ms | Scramble: R', D, U', B', R', 
+Solve 8: SOLVED | Time: 0ms | Scramble: B2, B2, U', B', R', 
+Solve 9: SOLVED | Time: 15412ms | Scramble: L', R2, R, F', F2, 
+Solve 10: NO SOLUTION FOUND | Time: 60005ms | Scramble: D', F, L, F', U, 
+Solved 4/10 scrambles of size 5. Average solve time (successful solves only): 4458ms
+Median solve time: 1882ms | Min: 0ms | Max: 15412ms | Average moves in solution: 15.750000
