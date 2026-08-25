@@ -395,8 +395,6 @@ public:
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
-			std::cout << "Searching Depth: " << search_depth << "\n";
-			
 			// Reset dfs state
 			reset_dfs(scramble);
 
@@ -433,12 +431,6 @@ public:
 					move_space = DOMINO_MOVES;
 					search_depth = 1;
 					MAX_DEPTH = DEPTH_PHASE_2;
-
-					std::cout << "Domino reduction complete with: ";
-					for (std::string s : state_moves) {
-						std::cout << s << ", ";
-					}
-					std::cout << "\n";
 
 					// Save moves to get to that state
 					solution.first = state_moves;
