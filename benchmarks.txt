@@ -1,39 +1,12 @@
-Scrambles of size 2:
-Scramble Moves: F2, D | Time: 4ms | (Phase 1) (Phase 2) D', F2, 
-Scramble Moves: F2, U | Time: 0ms | (Phase 1) (Phase 2) U', F2, 
-Scramble Moves: U2, F2 | Time: 0ms | (Phase 1) (Phase 2) F2, U2, 
-Scramble Moves: D', R2 | Time: 0ms | (Phase 1) (Phase 2) R2, D, 
-Scramble Moves: U', D' | Time: 0ms | (Phase 1) (Phase 2) D, U, 
+Non domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed):
+  States Explored: 2347000
+  Max Depth Reached: 8
+  Elapsed Time (ms): 10005
+  States/sec: 234583
 
-Average time for scramble size 2: 0ms
+Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed):
+  States Explored: 2141000
+  Max Depth Reached: 9
+  Elapsed Time (ms): 10001
+  States/sec: 214079
 
-Scrambles of size 3:
-Scramble Moves: L2, D', B2 | Time: 0ms | (Phase 1) (Phase 2) B2, D, L2, 
-Scramble Moves: D', F2, U | Time: 0ms | (Phase 1) (Phase 2) U', F2, D, 
-Scramble Moves: U, D', R2 | Time: 0ms | (Phase 1) (Phase 2) R2, D, U', 
-Scramble Moves: U2, B2, U2 | Time: 0ms | (Phase 1) (Phase 2) U2, B2, U2, 
-Scramble Moves: U', D2, R2 | Time: 0ms | (Phase 1) (Phase 2) R2, D2, U, 
-
-Average time for scramble size 3: 0ms
-
-Scrambles of size 4:
-Scramble Moves: D2, L2, F2, U | Time: 3ms | (Phase 1) (Phase 2) U', F2, L2, D2, 
-Scramble Moves: L2, D2, R2, D2 | Time: 1ms | (Phase 1) (Phase 2) D2, R2, D2, L2, 
-Scramble Moves: B2, L2, D2, L2 | Time: 5ms | (Phase 1) (Phase 2) L2, D2, L2, B2, 
-Scramble Moves: R2, D', R2, D2 | Time: 1ms | (Phase 1) (Phase 2) D2, R2, D, R2, 
-Scramble Moves: U2, D2, R2, D2 | Time: 1ms | (Phase 1) (Phase 2) D2, R2, D2, U2, 
-
-Average time for scramble size 4: 2ms
-
-Scrambles of size 5:
-Scramble Moves: L2, B2, D, L2, F2 | Time: 35ms | (Phase 1) (Phase 2) F2, L2, D', B2, L2, 
-Scramble Moves: F2, B2, D2, B2, U | Time: 21ms | (Phase 1) (Phase 2) U', B2, D2, B2, F2, 
-Scramble Moves: B2, R2, F2, D2, R2 | Time: 40ms | (Phase 1) (Phase 2) R2, D2, F2, R2, B2, 
-Scramble Moves: L2, D', F2, U, D2 | Time: 7ms | (Phase 1) (Phase 2) D2, U', F2, D, L2, 
-Scramble Moves: U', R2, U', D2, R2 | Time: 39ms | (Phase 1) (Phase 2) R2, D2, U, R2, U, 
-
-Average time for scramble size 5: 28ms
-
-Scrambles of size 6:
-Scramble Moves: U2, L2, U', L2, D', L2 | Time: 615ms | (Phase 1) (Phase 2) L2, D', U2, R2, U, R2, D2, 
-Scramble Moves: R2, U2, R2, L2, D, F2 | Time: 171ms | (Phase 1) (Phase 2) F2, D', L2, R2, U2, R2, 
