@@ -1,0 +1,19 @@
+Non domino reduced search (bmark-7, final):
+  States Explored: 14646000
+  Max Depth Reached: 7
+  Elapsed: 10825ms
+  States/sec: 1.35298e+06
+
+Domino reduced search (bmark-7, final):
+  States Explored: 14477000
+  Max Depth Reached: 11
+  Elapsed: 10334ms
+  States/sec: 1.40091e+06
+
+Scramble Size 5 (bmark-7, final): Solved 10/10 | Avg: 0ms | Median: 0ms | Min: 0ms | Max: 0ms | Avg Moves: 5
+Scramble Size 10 (bmark-7, final): Solved 10/10 | Avg: 0ms | Median: 0ms | Min: 0ms | Max: 0ms | Avg Moves: 9.3
+Scramble Size 15 (bmark-7, final): Solved 10/10 | Avg: 6ms | Median: 4ms | Min: 0ms | Max: 28ms | Avg Moves: 13.5
+Scramble Size 20 (bmark-7, final): Solved 10/10 | Avg: 219ms | Median: 70ms | Min: 3ms | Max: 953ms | Avg Moves: 17.6
+Scramble Size 25 (bmark-7, final): Solved 9/10 | Avg: 3607ms | Median: 2403ms | Min: 278ms | Max: 14158ms | Avg Moves: 22.4444
+Scramble Size 30 (bmark-7, final): Solved 9/10 | Avg: 6458ms | Median: 2363ms | Min: 255ms | Max: 40416ms | Avg Moves: 22.6667
+Scramble Size 35 (bmark-7, final): Solved 10/10 | Avg: 11257ms | Median: 6417ms | Min: 508ms | Max: 44373ms | Avg Moves: 22.8

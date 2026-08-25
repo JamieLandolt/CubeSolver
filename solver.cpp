@@ -381,15 +381,19 @@ public:
 		states.push(DFSEntry{nullptr, state.first, state.second, "", 0});
 	}
 
-	void dfs(std::vector<std::string> scramble) {
+	void dfs(std::vector<std::string> scramble, std::chrono::seconds max_time = std::chrono::seconds(60)) {
 		int MAX_DEPTH = DEPTH_PHASE_1;
 		std::vector<std::string> move_space = MOVES;
 
 		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
 
+		// Safety cap so a runaway search can't hang benchmarking runs indefinitely
+		auto dfs_start_time = std::chrono::steady_clock::now();
+		long long nodes_since_time_check = 0;
+
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
-			
+
 			// Reset dfs state
 			reset_dfs(scramble);
 
@@ -405,7 +409,16 @@ public:
 				long edges = dfs_state.edges;
 
 				states.pop();
-				
+
+				nodes_since_time_check++;
+				if (nodes_since_time_check >= 1000) {
+					nodes_since_time_check = 0;
+					if (std::chrono::steady_clock::now() - dfs_start_time > max_time) {
+						std::cout << "Solve exceeded safety cap of " << max_time.count() << "s, aborting.\n";
+						return;
+					}
+				}
+
 				// Check for target state
 				int phase_complete = check_state(corners, edges);
 
@@ -634,8 +647,191 @@ void benchmark_solves() {
 	std::cout << "Max Solve Time: " << *std::max_element(times.begin(), times.end()) << std::endl;
 }
 
+// --- bmark-7: additive benchmarking instrumentation below (final benchmark) ---
+
+struct BenchmarkResult {
+	long long states_explored;
+	int max_depth_reached;
+	long long elapsed_ms;
+};
+
+// Mirrors the DFS traversal mechanics used by Solver::dfs (iterative deepening,
+// banned same-face-twice pruning, visited-state dedup, unique_ptr-owned DFSEntry
+// parent chain freed at the end of each depth's search) so that the states/sec
+// figure is representative of this commit's actual search mechanics.
+BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, int search_depth, std::chrono::seconds duration) {
+	Cube cube;
+
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
+								{'D', std::unordered_set<char>{'D'}}, {'F', std::unordered_set<char>{'F', 'B'}},
+								{'B', std::unordered_set<char>{'B'}}, {'R', std::unordered_set<char>{'R', 'L'}},
+								{'L', std::unordered_set<char>{'L'}}};
+
+	std::pair<long,long> solved_state = cube.get_solved_state();
+
+	auto start_time = std::chrono::steady_clock::now();
+	long long states_explored = 0;
+	int max_depth_reached = 0;
+	bool time_up = false;
+
+	for (int depth_limit = 1; depth_limit <= search_depth && !time_up; depth_limit++) {
+		std::unordered_set<std::pair<long,long>, StateHash> visited;
+		std::stack<DFSEntry> states;
+		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
+
+		visited.insert(solved_state);
+		states.push(DFSEntry{nullptr, solved_state.first, solved_state.second, "", 0});
+
+		while (states.size() > 0) {
+			DFSEntry dfs_state(states.top());
+			states.pop();
+
+			states_explored++;
+			if (dfs_state.depth > max_depth_reached) {
+				max_depth_reached = dfs_state.depth;
+			}
+
+			if (states_explored % 1000 == 0) {
+				if (std::chrono::steady_clock::now() - start_time >= duration) {
+					time_up = true;
+					break;
+				}
+			}
+
+			if (dfs_state.depth < depth_limit) {
+				for (const std::string& mv : move_space) {
+					if (dfs_state.depth > 0 && banned_next_moves[dfs_state.move[0]].count(mv[0])) {
+						continue;
+					}
+					std::pair<long,long> state = cube.move(mv, dfs_state.corners, dfs_state.edges);
+
+					if (!visited.count(state)) {
+						visited.insert(state);
+						std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
+						DFSEntry* parent_ptr = parent.get();
+						dfs_nodes.push_back(std::move(parent));
+						states.push(DFSEntry{parent_ptr, state.first, state.second, mv, dfs_state.depth + 1});
+					}
+				}
+			}
+		}
+		// dfs_nodes goes out of scope here, freeing this depth's DFSEntry nodes
+	}
+
+	long long elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
+	return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms};
+}
+
+void log_explore_result(std::ofstream& file, const std::string& label, const BenchmarkResult& result) {
+	double states_per_sec = result.elapsed_ms > 0 ? (double)result.states_explored / (result.elapsed_ms / 1000.0) : 0.0;
+
+	std::cout << label << ":\n";
+	std::cout << "  States Explored: " << result.states_explored << "\n";
+	std::cout << "  Max Depth Reached: " << result.max_depth_reached << "\n";
+	std::cout << "  Elapsed: " << result.elapsed_ms << "ms\n";
+	std::cout << "  States/sec: " << states_per_sec << "\n\n";
+
+	file << label << ":\n";
+	file << "  States Explored: " << result.states_explored << "\n";
+	file << "  Max Depth Reached: " << result.max_depth_reached << "\n";
+	file << "  Elapsed: " << result.elapsed_ms << "ms\n";
+	file << "  States/sec: " << states_per_sec << "\n\n";
+}
+
+void benchmark_states_explored() {
+	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
+	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
+
+	std::ofstream file("benchmarks.txt", std::ios::app);
+
+	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
+	log_explore_result(file, "Non domino reduced search (bmark-7, final)", non_domino_result);
+
+	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
+	log_explore_result(file, "Domino reduced search (bmark-7, final)", domino_result);
+}
+
+struct ScalingResult {
+	int scramble_size;
+	int solved_count;
+	long avg_time_ms;
+	long median_time_ms;
+	long min_time_ms;
+	long max_time_ms;
+	double avg_moves;
+};
+
+void log_scaling_result(std::ofstream& file, const ScalingResult& result) {
+	std::cout << "Scramble Size " << result.scramble_size << " (bmark-7, final): Solved " << result.solved_count << "/10 | "
+			   << "Avg: " << result.avg_time_ms << "ms | Median: " << result.median_time_ms << "ms | "
+			   << "Min: " << result.min_time_ms << "ms | Max: " << result.max_time_ms << "ms | "
+			   << "Avg Moves: " << result.avg_moves << "\n";
+
+	file << "Scramble Size " << result.scramble_size << " (bmark-7, final): Solved " << result.solved_count << "/10 | "
+		 << "Avg: " << result.avg_time_ms << "ms | Median: " << result.median_time_ms << "ms | "
+		 << "Min: " << result.min_time_ms << "ms | Max: " << result.max_time_ms << "ms | "
+		 << "Avg Moves: " << result.avg_moves << "\n";
+}
+
+// Repurposes the existing Timer/random_scramble machinery from benchmark_solves() to find,
+// for this commit, how far scramble size can scale while solves stay comfortably under 10s.
+void benchmark_scaling_solve_times() {
+	Cube cube;
+	Solver solver = Solver(cube);
+	Timer timer = Timer();
+
+	std::ofstream file("benchmarks.txt", std::ios::app);
+
+	const int NUM_SOLVES = 10;
+	const long AVG_TIME_LIMIT_MS = 10000;
+
+	int scramble_size = 5;
+	while (true) {
+		std::vector<long> times;
+		std::vector<int> move_counts;
+		int solved_count = 0;
+
+		for (int solve_num = 0; solve_num < NUM_SOLVES; solve_num++) {
+			std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
+			std::vector<std::string> scramble = p.first;
+
+			solver.reset_full();
+			solver.reset_dfs(scramble);
+
+			timer.start();
+			solver.dfs(scramble);
+			auto solve_time = timer.stop(scramble_size);
+
+			std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+			if (solution.second.size()) {
+				solved_count++;
+				times.push_back(solve_time.count());
+				move_counts.push_back((int)(solution.first.size() + solution.second.size()));
+			}
+		}
+
+		ScalingResult result;
+		result.scramble_size = scramble_size;
+		result.solved_count = solved_count;
+		result.avg_time_ms = times.size() ? timer.avg(times) : 0;
+		result.median_time_ms = times.size() ? timer.median(times) : 0;
+		result.min_time_ms = times.size() ? *std::min_element(times.begin(), times.end()) : 0;
+		result.max_time_ms = times.size() ? *std::max_element(times.begin(), times.end()) : 0;
+		result.avg_moves = move_counts.size() ? (double)std::accumulate(move_counts.begin(), move_counts.end(), 0) / move_counts.size() : 0.0;
+
+		log_scaling_result(file, result);
+
+		if (solved_count == 0 || result.avg_time_ms > AVG_TIME_LIMIT_MS) {
+			break;
+		}
+
+		scramble_size += 5;
+	}
+}
+
 int main(int argc, char** argv) {
-	benchmark_solves();
+	benchmark_states_explored();
+	benchmark_scaling_solve_times();
 	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
 
 	// solve(scramble);
