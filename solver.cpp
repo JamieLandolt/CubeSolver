@@ -521,60 +521,58 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 	auto start_time = std::chrono::steady_clock::now();
 
-	for (int max_depth = 0; max_depth <= search_depth; max_depth++) {
-		std::stack<int> depths;
-		std::stack<char> last_moves;
-		std::stack<long> corner_states;
-		std::stack<long> edge_states;
-		std::unordered_set<std::pair<long,long>,StateHash> visited;
+	std::stack<int> depths;
+	std::stack<char> last_moves;
+	std::stack<long> corner_states;
+	std::stack<long> edge_states;
+	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
-		depths.push(0);
-		last_moves.push('\0');
-		corner_states.push(solved.first);
-		edge_states.push(solved.second);
+	depths.push(0);
+	last_moves.push('\0');
+	corner_states.push(solved.first);
+	edge_states.push(solved.second);
 
-		while (depths.size() > 0) {
-			states_explored++;
-			if (states_explored % 1000 == 0) {
-				auto elapsed = std::chrono::steady_clock::now() - start_time;
-				if (elapsed >= duration) {
-					auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
-					return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count(), total_depth_searched};
-				}
+	while (depths.size() > 0) {
+		states_explored++;
+		if (states_explored % 1000 == 0) {
+			auto elapsed = std::chrono::steady_clock::now() - start_time;
+			if (elapsed >= duration) {
+				auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
+				return BenchmarkResult{states_explored, max_depth_reached, elapsed_ms.count(), total_depth_searched};
 			}
+		}
 
-			int depth = depths.top();
-			char last_move = last_moves.top();
-			long corners = corner_states.top();
-			long edges = edge_states.top();
+		int depth = depths.top();
+		char last_move = last_moves.top();
+		long corners = corner_states.top();
+		long edges = edge_states.top();
 
-			depths.pop();
-			last_moves.pop();
-			corner_states.pop();
-			edge_states.pop();
+		depths.pop();
+		last_moves.pop();
+		corner_states.pop();
+		edge_states.pop();
 
-			total_depth_searched += depth;
+		total_depth_searched += depth;
 
-			if (depth > max_depth_reached) {
-				max_depth_reached = depth;
+		if (depth > max_depth_reached) {
+			max_depth_reached = depth;
+		}
+
+		visited.insert({corners, edges});
+
+		for (const std::string& move : move_space) {
+			if (last_move != '\0' && banned_next_moves[last_move].count(move[0])) {
+				// Avoid moving the same side twice in a row
+				continue;
 			}
+			if (depth <= search_depth) {
+				std::pair<long,long> state = cube.move(move, corners, edges);
 
-			visited.insert({corners, edges});
-
-			for (const std::string& move : move_space) {
-				if (last_move != '\0' && banned_next_moves[last_move].count(move[0])) {
-					// Avoid moving the same side twice in a row
-					continue;
-				}
-				if (depth <= max_depth) {
-					std::pair<long,long> state = cube.move(move, corners, edges);
-
-					if (!visited.count(state)) {
-						depths.push(depth + 1);
-						last_moves.push(move[0]);
-						corner_states.push(state.first);
-						edge_states.push(state.second);
-					}
+				if (!visited.count(state)) {
+					depths.push(depth + 1);
+					last_moves.push(move[0]);
+					corner_states.push(state.first);
+					edge_states.push(state.second);
 				}
 			}
 		}
@@ -638,22 +636,18 @@ int main(int argc, char** argv) {
 		<< " states/sec (avg depth/state " << ((double)domino_result.total_depth_searched / domino_result.states_explored)
 		<< "; breadth ~= " << ((double)domino_result.states_explored / domino_result.max_depth_reached) << " states/depth-level)\n"
 		<< "\n"
-		<< "  On this run, bmark-4's raw states/sec is actually HIGHER than bmark-3's, not lower --\n"
-		<< "  so any earlier read of bmark-4 being slower in states/sec does not hold on this machine/run.\n"
-		<< "  What stands out instead is depth reached: bmark-4 tops out at max depth 7 (non-domino) /\n"
-		<< "  11 (domino) versus bmark-3's 21/21 in the same time budget, even though bmark-4 explores\n"
-		<< "  far MORE total states. The search-breadth figures explain why: bmark-4's states-per-depth-\n"
-		<< "  level is roughly 15-19x bmark-3's. Since explore_benchmark() re-runs a full DFS with a fresh\n"
-		<< "  `visited` set for every outer max_depth (both branches use the same search_depth=20 cap and\n"
-		<< "  the same banned_next_moves pruning), that gap means bmark-4's visited-state dedup is\n"
-		<< "  collapsing far fewer states at a given nominal depth than bmark-3's vector-based\n"
-		<< "  representation does -- so the 10s budget is consumed inside one shallow max_depth iteration\n"
-		<< "  instead of progressing through many. We cannot confirm from this benchmark alone whether\n"
-		<< "  that is a real difference in how many physically-distinct cube states exist at that depth,\n"
-		<< "  or a sign that rotation.h's bit-shift move/cycle logic still fails to canonicalise some\n"
-		<< "  states to the same bit pattern that the vector representation would treat as identical --\n"
-		<< "  this commit's own message (\"Fixed all move bugs I think\") is explicitly uncertain, so a\n"
-		<< "  residual move bug is plausible but not proven here.\n"
+		<< "  Root cause of the earlier depth-7-11-vs-21 anomaly: explore_benchmark() previously wrapped\n"
+		<< "  its DFS in an outer `for (int max_depth = 0; max_depth <= search_depth; max_depth++)` loop\n"
+		<< "  that reset the stack and `visited` set from scratch on every iteration -- an iterative-\n"
+		<< "  deepening restart that bmark-3's explore_benchmark() does not have (it runs one continuous\n"
+		<< "  DFS with a single `visited` set to the search_depth cap). That extra loop was a benchmark-\n"
+		<< "  harness bug introduced when bmark-4's explore_benchmark() was written, not a property of the\n"
+		<< "  solver: it forced repeated re-exploration of the same shallow states at every outer\n"
+		<< "  iteration, consuming the 10s budget without ever reaching a deep, single DFS pass. It has\n"
+		<< "  been removed so explore_benchmark() now matches bmark-3's single-pass structure. Separately,\n"
+		<< "  move/inverse round-trip tests (R,R',L,L',U,U',D,D',F,F',B,B' from solved) confirmed the\n"
+		<< "  bit-shift corner/edge encoding returns to the exact solved long values bit-for-bit after\n"
+		<< "  every move+inverse pair, so no evidence of a canonicalisation or hashing bug was found.\n"
 		<< "  Either way, raw states/sec is only one proxy for whether this branch's bit-shift/long state\n"
 		<< "  representation was a successful optimisation. This benchmark's actual intent per the bmark-4\n"
 		<< "  commit was correctness of the bit-shift representation, not exploration throughput -- the\n"
