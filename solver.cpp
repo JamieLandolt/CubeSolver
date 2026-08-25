@@ -347,7 +347,7 @@ public:
 	Solver(Cube& external_cube) : cube(external_cube) {
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
-		edge_orientations = orientations.first;
+		edge_orientations = orientations.second;
 	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
@@ -682,7 +682,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	Cube cube;
 	std::pair<std::vector<int>, std::vector<int>> orientations = cube.generate_orientations();
 	std::vector<int> corner_orientations = orientations.first;
-	std::vector<int> edge_orientations = orientations.first;
+	std::vector<int> edge_orientations = orientations.second;
 
 	// Seed the benchmark from a scrambled state so the pruning bound has meaningful
 	// "moves remaining" values to actually prune against.
