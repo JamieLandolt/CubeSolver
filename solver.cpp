@@ -716,6 +716,7 @@ struct BenchmarkResult {
 	long long states_explored;
 	int max_depth_reached;
 	long long elapsed_ms;
+	long long total_depth_searched = 0;
 };
 
 void log_benchmark_result(std::ostream& out, std::string label, BenchmarkResult result) {
@@ -723,8 +724,16 @@ void log_benchmark_result(std::ostream& out, std::string label, BenchmarkResult 
 	out << label << ":\n";
 	out << "  States Explored: " << result.states_explored << "\n";
 	out << "  Max Depth Reached: " << result.max_depth_reached << "\n";
+	out << "  Total depth searched: " << result.total_depth_searched << "\n";
 	out << "  Elapsed: " << result.elapsed_ms << "ms\n";
-	out << "  States/sec: " << states_per_sec << "\n\n";
+	out << "  States/sec: " << states_per_sec << "\n";
+	if (result.states_explored > 0) {
+		out << "  Average depth per state explored: " << ((double)result.total_depth_searched / result.states_explored) << "\n";
+	}
+	if (result.max_depth_reached > 0) {
+		out << "  Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
+	}
+	out << "\n";
 }
 
 // Mirrors the stack-based DFS traversal in Solver::dfs(), including the banned_next_moves
@@ -752,6 +761,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	long long states_explored = 0;
 	int max_depth_reached = 0;
 	long long iteration_count = 0;
+	long long total_depth_searched = 0;
 
 	auto start_time = std::chrono::steady_clock::now();
 
@@ -780,6 +790,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 		visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
 
 		states_explored++;
+		total_depth_searched += depth;
 		if (depth > max_depth_reached) max_depth_reached = depth;
 
 		// Search child nodes
@@ -813,6 +824,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	result.states_explored = states_explored;
 	result.max_depth_reached = max_depth_reached;
 	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
+	result.total_depth_searched = total_depth_searched;
 	return result;
 }
 
@@ -831,6 +843,29 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
 	log_benchmark_result(file, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
+
+	std::string comparison_note =
+		"Honest comparison vs bmark-2: bmark-2 (IDDFS, no banned_next_moves pruning) explored "
+		"3,319,999 states/10s (non-domino, 331,966.7 states/sec) and 3,643,999 states/10s (domino, "
+		"364,399.9 states/sec), both reaching max depth 20. bmark-3 (single fixed-depth DFS with "
+		"banned_next_moves pruning) explored 1,782,999 states/10s (non-domino, 178,282 states/sec, "
+		"average depth per state explored 20.92, search breadth 84,904.7) and 2,002,999 states/10s "
+		"(domino, 200,240 states/sec, average depth per state explored 20.82, search breadth 95,380.9), "
+		"both reaching max depth 21. bmark-3's raw states/sec is roughly half of bmark-2's, but this is "
+		"not a like-for-like comparison: bmark-2's IDDFS restarts from the root and re-explores the same "
+		"shallow states at every increasing depth limit, so a large share of its states-explored count is "
+		"cheap, shallow, previously-seen states re-hashed each iteration, whereas bmark-3 runs a single DFS "
+		"straight down, so its average depth per state explored (~20.9 out of a max of 21) shows almost "
+		"every state it explores sits near the bottom of the tree, where the visited set is largest and each "
+		"hash lookup/insert costs more. banned_next_moves does prune a real fraction of branching before any "
+		"state is generated or hashed (unlike bmark-1/bmark-2, which still generate, hash, and then discard "
+		"or re-visit such states via the visited set), but that saving is confounded here by the difference "
+		"in search strategy (IDDFS vs single deep DFS) and by the growing visited-set cost, so states/sec "
+		"alone does not isolate the pruning's effect. The meaningful comparison for actual solving speed "
+		"would be a solve-time benchmark (as run by bmark-1/bmark-2/bmark-7), which this branch does not "
+		"include; states-explored/sec here is a proxy for raw search throughput, not solve quality.\n";
+	std::cout << comparison_note << "\n";
+	file << comparison_note << "\n";
 
 	return 0;
 }
