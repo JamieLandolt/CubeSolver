@@ -426,8 +426,6 @@ public:
 		std::vector<std::string> move_space = MOVES;
 		auto dfs_start_time = std::chrono::steady_clock::now();
 		for (int search_depth = 1; search_depth < MAX_DEPTH; search_depth++) {
-			std::cout << "Searching Depth: " << search_depth << "\n";
-
 			// Reset dfs state
 			reset();
 
@@ -435,9 +433,6 @@ public:
 			int i = 0;
 			while (depths.size() > 0) {
 				i++;
-				if (i % 100000 == 0) {
-					std::cout << i << "\n";
-				}
 				if (i % 1000 == 0) {
 					auto elapsed_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - dfs_start_time).count();
 					if (elapsed_s >= 60) {
@@ -481,17 +476,6 @@ public:
 				if (phase_complete == 2) {
 					// Solved state has been found
 					solution.second = state_moves;
-					std::cout << "Number of iterations (total): " << i << "\n";
-
-					std::cout << "Found Sol: ";
-					for (std::string mv : solution.second) {
-						if (i < solution.second.size()) {
-							std::cout << mv << ", ";
-						} else {
-							std::cout << mv << "\n";
-						}
-					}
-
 					return;
 				}
 
@@ -501,16 +485,6 @@ public:
 					move_space = DOMINO_MOVES;
 					search_depth = 1;
 					MAX_DEPTH = DEPTH_PHASE_2;
-					std::cout << "Number of iterations (first): " << i << "\n";
-					for (std::string mv : cube.get_scramble()) {
-						std::cout << mv << ", ";
-					}
-
-					std::cout << "Domino reduction complete with: ";
-					for (std::string s : state_moves) {
-						std::cout << s << ", ";
-					}
-					std::cout << "\n";
 
 					// Save moves to get to that state
 					solution.first = state_moves;
