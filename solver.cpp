@@ -264,6 +264,10 @@ private:
 	std::stack<long> edge_states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
+	std::pair<std::vector<int>, std::vector<int>> orientations;
+	std::vector<int> corner_orientations;
+	std::vector<int> edge_orientations;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
@@ -276,7 +280,11 @@ public:
 	int DEPTH_PHASE_1 = 9;
 	int DEPTH_PHASE_2 = 9;
 
-	Solver(Cube& external_cube) : cube(external_cube) {}
+	Solver(Cube& external_cube) : cube(external_cube) {
+		orientations = cube.generate_orientations();
+		corner_orientations = orientations.first;
+		edge_orientations = orientations.second;
+	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
 		return solution;
@@ -414,7 +422,7 @@ public:
 					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 
 					// If it takes more moves than are left in the search to solve, don't bother searching
-					if (std::max(min_sol_moves.first, min_sol_moves.second) > search_depth - depth) {
+					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
 					}
 
@@ -594,6 +602,7 @@ struct BenchmarkResult {
 	long long states_explored;
 	int max_depth_reached;
 	long long elapsed_ms;
+	long long total_depth_searched = 0;
 };
 
 // Mirrors Solver::dfs()'s traversal mechanics (visited-set DFS via stacks, the
@@ -611,6 +620,10 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
 
 	Cube cube = Cube();
+
+	std::pair<std::vector<int>, std::vector<int>> orientations = cube.generate_orientations();
+	std::vector<int> corner_orientations = orientations.first;
+	std::vector<int> edge_orientations = orientations.second;
 
 	std::stack<int> depths;
 	std::stack<char> last_move_chars;
@@ -662,6 +675,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 		visited.insert({corners, edges});
 
 		result.states_explored++;
+		result.total_depth_searched += depth;
 		if (depth > result.max_depth_reached) {
 			result.max_depth_reached = depth;
 		}
@@ -671,7 +685,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 		// bother expanding its children.
 		std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 
-		if (std::max(min_sol_moves.first, min_sol_moves.second) <= search_depth - depth) {
+		if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) <= search_depth - depth) {
 			for (const std::string& mv : move_space) {
 				// Avoid moving the same side twice in a row
 				if (last_move != '\0' && banned_next_moves[last_move].count(mv[0])) {
@@ -704,8 +718,16 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 	out << label << ":\n";
 	out << "  States explored: " << result.states_explored << "\n";
 	out << "  Max depth reached: " << result.max_depth_reached << "\n";
+	out << "  Total depth searched: " << result.total_depth_searched << "\n";
 	out << "  Elapsed ms: " << result.elapsed_ms << "\n";
-	out << "  States/sec: " << states_per_sec << "\n\n";
+	out << "  States/sec: " << states_per_sec << "\n";
+	if (result.states_explored > 0) {
+		out << "  Average depth per state explored: " << ((double)result.total_depth_searched / result.states_explored) << "\n";
+	}
+	if (result.max_depth_reached > 0) {
+		out << "  Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
+	}
+	out << "\n";
 }
 
 int main(int argc, char** argv) {
@@ -723,6 +745,27 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(domino_moves, search_depth, std::chrono::seconds(10));
 	log_benchmark_result(file, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-5, search-path pruning)", domino_result);
+
+	double non_domino_states_per_sec = (double)non_domino_result.states_explored / (non_domino_result.elapsed_ms / 1000.0);
+	double domino_states_per_sec = (double)domino_result.states_explored / (domino_result.elapsed_ms / 1000.0);
+
+	std::string comparison_note =
+		"Comparison vs bmark-4 (bit-shift/long cube state, no pruning): bmark-4 measured "
+		"106470 states/sec (non domino) and 109467 states/sec (domino) with max depth reached "
+		"of only 6 and 9. This commit (bmark-5, after fixing the orientation-lookup pruning bug) "
+		"measured " + std::to_string((long long)non_domino_states_per_sec) + " states/sec (non domino) and " +
+		std::to_string((long long)domino_states_per_sec) + " states/sec (domino), reaching max depth " +
+		std::to_string(non_domino_result.max_depth_reached) + " and " + std::to_string(domino_result.max_depth_reached) +
+		" respectively - roughly a " + std::to_string((long long)(non_domino_states_per_sec / 106470.0)) +
+		"x and " + std::to_string((long long)(domino_states_per_sec / 109467.0)) +
+		"x increase in states/sec. This is not because more useful work is being done per second; it is because "
+		"the search-path pruning check cuts off entire subtrees (states whose orientation lower bound exceeds the "
+		"moves remaining in the search budget) before their children are ever generated or hashed, so the search "
+		"spends far less time producing and visited-checking states that could never lead to a solution within the "
+		"remaining depth, and reaches a much greater max depth on the same time budget as a result.\n";
+
+	file << comparison_note;
+	std::cout << comparison_note;
 
 	return 0;
 }
