@@ -581,7 +581,10 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	benchmark_solves();
-
+	std::vector<std::string> scramble = {"D", "R2", "U", "F2", "L2", "U", "D2", "F2", "U", "D2"};
+	auto start = std::chrono::steady_clock::now();
+	solve(scramble);
+	auto end = std::chrono::steady_clock::now();
+	std::cout << "Total time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 	return 0;
 }
