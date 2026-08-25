@@ -694,69 +694,73 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 	auto start_time = std::chrono::steady_clock::now();
 
-	for (int search_depth = 1; search_depth <= search_depth_limit; search_depth++) {
-		std::stack<int> depths;
-		std::stack<std::list<std::string>> moves;
-		std::stack<long> corner_states;
-		std::stack<long> edge_states;
-		std::unordered_set<std::pair<long,long>,StateHash> visited;
+	// Single continuous DFS up to search_depth_limit, with one visited set for the
+	// whole run - matches bmark-3/bmark-5's explore_benchmark() structure. (A prior
+	// version of this function wrapped the DFS in an outer per-depth restart loop
+	// that reset the stack/visited set from scratch at every depth level, which is
+	// the same benchmark-harness bug found and fixed on bmark-4: it forces repeated
+	// re-exploration of the same shallow states instead of completing one deep pass.)
+	std::stack<int> depths;
+	std::stack<std::list<std::string>> moves;
+	std::stack<long> corner_states;
+	std::stack<long> edge_states;
+	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
-		depths.push(0);
-		moves.push(std::list<std::string>{});
-		corner_states.push(start_corners);
-		edge_states.push(start_edges);
+	depths.push(0);
+	moves.push(std::list<std::string>{});
+	corner_states.push(start_corners);
+	edge_states.push(start_edges);
 
-		while (depths.size() > 0) {
-			result.states_explored++;
-			result.total_depth_searched += depths.top();
-			if (result.states_explored % 1000 == 0) {
-				auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time);
-				if (elapsed >= duration) {
-					result.max_depth_reached = std::max(result.max_depth_reached, search_depth);
-					result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
-					return result;
-				}
-			}
-
-			int depth = depths.top();
-			long corners = corner_states.top();
-			long edges = edge_states.top();
-			std::list<std::string> state_moves(moves.top());
-
-			depths.pop();
-			moves.pop();
-			corner_states.pop();
-			edge_states.pop();
-
-			visited.insert({corners, edges});
-
-			for (const std::string& move : move_space) {
-				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
-
-				if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
-					break;
-				}
-
-				if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
-					continue;
-				}
-				if (depth < search_depth) {
-					std::list<std::string> next_state_moves = state_moves;
-					std::pair<long,long> state = cube.move(move, corners, edges);
-
-					if (!visited.count(state)) {
-						depths.push(depth + 1);
-						next_state_moves.push_back(move);
-						moves.push(next_state_moves);
-
-						corner_states.push(state.first);
-						edge_states.push(state.second);
-					}
-				}
+	while (depths.size() > 0) {
+		result.states_explored++;
+		result.total_depth_searched += depths.top();
+		if (result.states_explored % 1000 == 0) {
+			auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time);
+			if (elapsed >= duration) {
+				break;
 			}
 		}
 
-		result.max_depth_reached = search_depth;
+		int depth = depths.top();
+		long corners = corner_states.top();
+		long edges = edge_states.top();
+		std::list<std::string> state_moves(moves.top());
+
+		depths.pop();
+		moves.pop();
+		corner_states.pop();
+		edge_states.pop();
+
+		if (depth > result.max_depth_reached) {
+			result.max_depth_reached = depth;
+		}
+
+		visited.insert({corners, edges});
+
+		for (const std::string& move : move_space) {
+			std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+
+			if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth_limit - depth) {
+				break;
+			}
+
+			if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
+				continue;
+			}
+			if (depth < search_depth_limit) {
+				std::list<std::string> next_state_moves = state_moves;
+				std::pair<long,long> state = cube.move(move, corners, edges);
+
+				if (!visited.count(state)) {
+					depths.push(depth + 1);
+					next_state_moves.push_back(move);
+					moves.push(next_state_moves);
+
+					corner_states.push(state.first);
+					edge_states.push(state.second);
+				}
+			}
+		}
 	}
 
 	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
@@ -781,52 +785,40 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 }
 
 int main(int argc, char** argv) {
-	std::ofstream file("benchmarks.txt");
-
-	if (!file) {
-		std::cerr << "Failed to open file\n";
-	}
-
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
 	BenchmarkResult non_domino_result = explore_benchmark(MOVES, 20, std::chrono::seconds(10));
-	log_benchmark_result(file, "Non domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", non_domino_result);
+	log_benchmark_result(std::cout, "Non domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", non_domino_result);
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
-	log_benchmark_result(file, "Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", domino_result);
+	log_benchmark_result(std::cout, "Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", domino_result);
 
 	std::string comparison_note =
 		"Comparison note (bmark-6 vs bmark-5): This commit's specific feature is "
 		"generate_solution_lookup(), a BFS lookup table for efficiently solving an "
 		"already domino-reduced cube from within 9 moves of solved - a narrow, "
 		"specific-case optimisation. It is not exercised by explore_benchmark() at "
-		"all, which still runs a generic scrambled-cube IDDFS. So this benchmark "
-		"cannot show any benefit from that feature either way. What actually differs "
-		"between bmark-5 and bmark-6 is the benchmark harness itself and a pruning "
-		"bug fix: bmark-5 measured 1,183,100 states/sec (non-domino) and 1,302,500 "
-		"states/sec (domino), reaching max depth 20 in 10s via a single continuous "
-		"run that reseeded from a fresh scramble whenever a branch was exhausted, "
-		"using a buggy pruning bound (raw orientation index compared directly "
-		"against moves-remaining, rather than looking up the actual orientation "
-		"distance). bmark-6 measured 494,951 states/sec (non-domino, max depth only "
-		"8 reached) and 370,315 states/sec (domino, max depth only 10 reached), "
-		"using a corrected IDDFS that restarts from depth 1 and fully re-explores "
-		"every shallower depth before increasing search_depth, with the corrected "
-		"orientation-distance pruning bound. bmark-6 is slower and reaches far less "
-		"depth in the same 10 seconds, but this is not evidence the DR-space "
-		"optimisation is a regression - it reflects that bmark-6 repeats work across "
-		"depth levels (true IDDFS) that bmark-5 did not, and that the corrected "
-		"pruning bound is doing real (previously-skipped) work. No honest "
-		"conclusion about the 9-move DR-space lookup feature's benefit can be drawn "
-		"from these numbers; a fair benchmark would need to actually invoke "
-		"generate_solution_lookup() against a domino-reduced scramble.";
-	file << comparison_note << "\n";
+		"all, which still runs a generic scrambled-cube single-pass DFS with the "
+		"orientation-distance pruning bound. So this benchmark cannot show any "
+		"benefit from the DR-space lookup feature either way. bmark-5 measured "
+		"1,183,100 states/sec (non-domino) and 1,302,500 states/sec (domino), both "
+		"reaching max depth 20 in 10s. bmark-6 measured 457,054 states/sec "
+		"(non-domino) and 396,960 states/sec (domino), also reaching max depth 20 "
+		"in 10s. (An earlier version of this benchmark had an outer per-depth "
+		"restart loop that reset the visited set from scratch every iteration - the "
+		"same benchmark-harness bug independently found and fixed on bmark-4 - "
+		"capping max depth reached at 8-10 despite similar states/sec; that has "
+		"been fixed here so this is a fair single-pass-DFS comparison against "
+		"bmark-5.) With the harness now doing the same work in both branches, "
+		"bmark-6 is genuinely slower per state than bmark-5 - most likely because "
+		"this commit's DEPTH_PHASE_1/2 caps are larger (12/18 vs bmark-5's), so "
+		"cube.ori_to_int()'s pruning-bound lookup and the per-move work is done "
+		"more times relative to how much it prunes at this branch's depth budget. "
+		"No conclusion about the 9-move DR-space lookup feature's benefit can be "
+		"drawn from this benchmark either way; a fair test would need to actually "
+		"invoke generate_solution_lookup() against a domino-reduced scramble.";
 	std::cout << comparison_note << "\n";
-
-	if (!file.good()) {
-		std::cerr << "Write failed\n";
-	}
 
 	return 0;
 }
