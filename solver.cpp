@@ -510,6 +510,7 @@ struct BenchmarkResult {
 	long long states_explored = 0;
 	int max_depth_reached = 0;
 	long long elapsed_ms = 0;
+	long long total_depth_searched = 0;
 };
 
 // Mirrors the traversal mechanics of Solver::dfs() (stack-based DFS with a
@@ -547,6 +548,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 		visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
 
 		result.states_explored++;
+		result.total_depth_searched += depth;
 		if (depth > result.max_depth_reached) {
 			result.max_depth_reached = depth;
 		}
@@ -573,9 +575,16 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 	out << "=== " << label << " ===\n";
 	out << "States explored: " << r.states_explored << "\n";
 	out << "Max depth reached: " << r.max_depth_reached << "\n";
+	out << "Total depth searched: " << r.total_depth_searched << "\n";
 	out << "Elapsed: " << r.elapsed_ms << "ms\n";
 	if (r.elapsed_ms > 0) {
 		out << "States/sec: " << (r.states_explored * 1000.0 / r.elapsed_ms) << "\n";
+	}
+	if (r.states_explored > 0) {
+		out << "Average depth per state explored: " << ((double)r.total_depth_searched / r.states_explored) << "\n";
+	}
+	if (r.max_depth_reached > 0) {
+		out << "Average states per depth level (search breadth): " << ((double)r.states_explored / r.max_depth_reached) << "\n";
 	}
 	out << "\n";
 }

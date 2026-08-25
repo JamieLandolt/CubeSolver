@@ -1,25 +1,31 @@
 === Non domino reduced search (bmark-1) ===
-States explored: 4166000
+States explored: 4623000
 Max depth reached: 20
-Elapsed: 10001ms
-States/sec: 416558
+Total depth searched: 92074377
+Elapsed: 10000ms
+States/sec: 462300
+Average depth per state explored: 19.9166
+Average states per depth level (search breadth): 231150
 
 === Domino reduced search (bmark-1) ===
-States explored: 4647000
+States explored: 5053000
 Max depth reached: 20
-Elapsed: 10002ms
-States/sec: 464607
+Total depth searched: 100128686
+Elapsed: 10001ms
+States/sec: 505249
+Average depth per state explored: 19.8157
+Average states per depth level (search breadth): 252650
 
 === Solves of size 5 (bmark-1, DFS fixed-depth) ===
-Solve 1: SOLVED | Time: 540ms | Scramble: B2, U', B', D', F2, 
-Solve 2: SOLVED | Time: 1882ms | Scramble: B2, B, L2, R2, U, 
-Solve 3: NO SOLUTION FOUND | Time: 2189ms | Scramble: L', D', R', U, L, 
-Solve 4: NO SOLUTION FOUND | Time: 60005ms | Scramble: R', B2, L2, D2, L2, 
-Solve 5: NO SOLUTION FOUND | Time: 1331ms | Scramble: B', L', L', R', U, 
-Solve 6: NO SOLUTION FOUND | Time: 1411ms | Scramble: L', U', F', B', D', 
-Solve 7: NO SOLUTION FOUND | Time: 1474ms | Scramble: R', D, U', B', R', 
-Solve 8: SOLVED | Time: 0ms | Scramble: B2, B2, U', B', R', 
-Solve 9: SOLVED | Time: 15412ms | Scramble: L', R2, R, F', F2, 
-Solve 10: NO SOLUTION FOUND | Time: 60005ms | Scramble: D', F, L, F', U, 
-Solved 4/10 scrambles of size 5. Average solve time (successful solves only): 4458ms
-Median solve time: 1882ms | Min: 0ms | Max: 15412ms | Average moves in solution: 15.750000
+Solve 1: NO SOLUTION FOUND | Time: 59081ms | Scramble: U, R2, L', U, R2, 
+Solve 2: SOLVED | Time: 11ms | Scramble: F, B2, L, R2, L, 
+Solve 3: NO SOLUTION FOUND | Time: 60000ms | Scramble: B2, U, B', U2, F', 
+Solve 4: NO SOLUTION FOUND | Time: 60006ms | Scramble: U', R', F2, L', F', 
+Solve 5: SOLVED | Time: 8243ms | Scramble: F2, U, U, D', L', 
+Solve 6: SOLVED | Time: 589ms | Scramble: F2, U', B, R', D2, 
+Solve 7: SOLVED | Time: 120ms | Scramble: L, D', F', R, L2, 
+Solve 8: NO SOLUTION FOUND | Time: 1308ms | Scramble: U2, L, F', L, R', 
+Solve 9: SOLVED | Time: 0ms | Scramble: L, F, R', D2, D2, 
+Solve 10: NO SOLUTION FOUND | Time: 60008ms | Scramble: D', B, R2, F2, D2, 
+Solved 5/10 scrambles of size 5. Average solve time (successful solves only): 1792ms
+Median solve time: 120ms | Min: 0ms | Max: 8243ms | Average moves in solution: 9.800000
