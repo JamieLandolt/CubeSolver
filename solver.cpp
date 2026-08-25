@@ -896,27 +896,5 @@ int main(int argc, char** argv) {
 
 	std::cout << summary << "\n";
 
-	std::ostringstream cmp;
-	cmp << "Comparison to bmark-1 (fixed-depth DFS, no IDDFS): bmark-1 solved only 4/10 size-5 scrambles (avg 4458ms "
-			"among successes, many timing out at 60s) because it must exhaustively search to a single fixed depth even "
-			"when a much shallower solution exists. IDDFS instead searches depth 1, then 2, then 3... up to the max, so "
-			"it finds the first (often shallow) solution as soon as a depth reveals one, without wasting time "
-			"re-exploring already-searched shallow levels from scratch each time depth increases only slightly more. "
-			"This branch solved " << success_count << "/10 at avg ";
-	if (success_count > 0) {
-		double speedup_factor = avg_time > 0.0 ? (4458.0 / avg_time) : 0.0;
-		cmp << format_decimal(avg_time, 1) << "ms - roughly " << format_decimal(speedup_factor, 0)
-			<< "x faster on average and far more reliable";
-	} else {
-		cmp << "n/a";
-	}
-	cmp << " - despite exploring FEWER OR SIMILAR raw states "
-			"per second in the pure states-explored/10s benchmark, because it isn't wasting exploration budget "
-			"re-searching states already known not to lead anywhere within the current depth limit; it's finding real "
-			"solutions faster, not exploring faster.";
-	std::string comparison_note = cmp.str();
-
-	std::cout << comparison_note << "\n";
-
 	return 0;
 }
