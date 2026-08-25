@@ -711,11 +711,11 @@ void solve(std::vector<std::string> scramble) {
 }
 
 int main(int argc, char** argv) {
-	std::vector<std::string> scramble = {"R'", "B'", "D'"};
+	// gprof-2: hardcoded 10-move scramble, chosen for a several-second solve
+	// (measured ~11s) that reliably finds a solution well under a 40s budget,
+	// to give gprof useful profiling data for a single solve() run.
+	std::vector<std::string> scramble = {"B2", "U'", "R2", "F2", "U", "F", "F'", "B2", "D2", "R2"};
 	solve(scramble);
-	
-	// benchmark_solves();
-	// solve(std::vector<std::string>{"B'", "D", "F'", "R'"});
 
 	return 0;
 }
