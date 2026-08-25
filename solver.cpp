@@ -667,6 +667,7 @@ struct BenchmarkResult {
 	long long states_explored;
 	int max_depth_reached;
 	long long elapsed_ms;
+	long long total_depth_searched = 0;
 };
 
 // Mirrors Solver::dfs()'s traversal mechanics (including the orientation-lookup pruning
@@ -707,6 +708,7 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 
 		while (depths.size() > 0) {
 			result.states_explored++;
+			result.total_depth_searched += depths.top();
 			if (result.states_explored % 1000 == 0) {
 				auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time);
 				if (elapsed >= duration) {
@@ -766,8 +768,16 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 	out << label << ":\n";
 	out << "  States Explored: " << result.states_explored << "\n";
 	out << "  Max Depth Reached: " << result.max_depth_reached << "\n";
+	out << "Total depth searched: " << result.total_depth_searched << "\n";
 	out << "  Elapsed Time (ms): " << result.elapsed_ms << "\n";
-	out << "  States/sec: " << states_per_sec << "\n\n";
+	out << "  States/sec: " << states_per_sec << "\n";
+	if (result.states_explored > 0) {
+		out << "Average depth per state explored: " << ((double)result.total_depth_searched / result.states_explored) << "\n";
+	}
+	if (result.max_depth_reached > 0) {
+		out << "Average states per depth level (search breadth): " << ((double)result.states_explored / result.max_depth_reached) << "\n";
+	}
+	out << "\n";
 }
 
 int main(int argc, char** argv) {
@@ -785,6 +795,34 @@ int main(int argc, char** argv) {
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(file, "Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", domino_result);
+
+	std::string comparison_note =
+		"Comparison note (bmark-6 vs bmark-5): This commit's specific feature is "
+		"generate_solution_lookup(), a BFS lookup table for efficiently solving an "
+		"already domino-reduced cube from within 9 moves of solved - a narrow, "
+		"specific-case optimisation. It is not exercised by explore_benchmark() at "
+		"all, which still runs a generic scrambled-cube IDDFS. So this benchmark "
+		"cannot show any benefit from that feature either way. What actually differs "
+		"between bmark-5 and bmark-6 is the benchmark harness itself and a pruning "
+		"bug fix: bmark-5 measured 1,183,100 states/sec (non-domino) and 1,302,500 "
+		"states/sec (domino), reaching max depth 20 in 10s via a single continuous "
+		"run that reseeded from a fresh scramble whenever a branch was exhausted, "
+		"using a buggy pruning bound (raw orientation index compared directly "
+		"against moves-remaining, rather than looking up the actual orientation "
+		"distance). bmark-6 measured 494,951 states/sec (non-domino, max depth only "
+		"8 reached) and 370,315 states/sec (domino, max depth only 10 reached), "
+		"using a corrected IDDFS that restarts from depth 1 and fully re-explores "
+		"every shallower depth before increasing search_depth, with the corrected "
+		"orientation-distance pruning bound. bmark-6 is slower and reaches far less "
+		"depth in the same 10 seconds, but this is not evidence the DR-space "
+		"optimisation is a regression - it reflects that bmark-6 repeats work across "
+		"depth levels (true IDDFS) that bmark-5 did not, and that the corrected "
+		"pruning bound is doing real (previously-skipped) work. No honest "
+		"conclusion about the 9-move DR-space lookup feature's benefit can be drawn "
+		"from these numbers; a fair benchmark would need to actually invoke "
+		"generate_solution_lookup() against a domino-reduced scramble.";
+	file << comparison_note << "\n";
+	std::cout << comparison_note << "\n";
 
 	if (!file.good()) {
 		std::cerr << "Write failed\n";
