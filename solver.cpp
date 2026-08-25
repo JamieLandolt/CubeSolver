@@ -821,8 +821,6 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 }
 
 int main(int argc, char** argv) {
-	// This branch (bmark-3) only tracks the states-explored/sec metric for the banned_next_moves
-	// pruning feature, per spec; no size-5 solve-time benchmark is required here.
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
@@ -832,27 +830,68 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
 
-	std::string comparison_note =
-		"Honest comparison vs bmark-2: bmark-2 (IDDFS, no banned_next_moves pruning) explored "
-		"3,319,999 states/10s (non-domino, 331,966.7 states/sec) and 3,643,999 states/10s (domino, "
-		"364,399.9 states/sec), both reaching max depth 20. bmark-3 (single fixed-depth DFS with "
-		"banned_next_moves pruning) explored 1,782,999 states/10s (non-domino, 178,282 states/sec, "
-		"average depth per state explored 20.92, search breadth 84,904.7) and 2,002,999 states/10s "
-		"(domino, 200,240 states/sec, average depth per state explored 20.82, search breadth 95,380.9), "
-		"both reaching max depth 21. bmark-3's raw states/sec is roughly half of bmark-2's, but this is "
-		"not a like-for-like comparison: bmark-2's IDDFS restarts from the root and re-explores the same "
-		"shallow states at every increasing depth limit, so a large share of its states-explored count is "
-		"cheap, shallow, previously-seen states re-hashed each iteration, whereas bmark-3 runs a single DFS "
-		"straight down, so its average depth per state explored (~20.9 out of a max of 21) shows almost "
-		"every state it explores sits near the bottom of the tree, where the visited set is largest and each "
-		"hash lookup/insert costs more. banned_next_moves does prune a real fraction of branching before any "
-		"state is generated or hashed (unlike bmark-1/bmark-2, which still generate, hash, and then discard "
-		"or re-visit such states via the visited set), but that saving is confounded here by the difference "
-		"in search strategy (IDDFS vs single deep DFS) and by the growing visited-set cost, so states/sec "
-		"alone does not isolate the pruning's effect. The meaningful comparison for actual solving speed "
-		"would be a solve-time benchmark (as run by bmark-1/bmark-2/bmark-7), which this branch does not "
-		"include; states-explored/sec here is a proxy for raw search throughput, not solve quality.\n";
-	std::cout << comparison_note << "\n";
+	// Average time to solve scrambles of size SCRAMBLE_SIZE (existing Solver/dfs() path, unmodified)
+	const int NUM_SCRAMBLES = 10;
+	const int SCRAMBLE_SIZE = 20;
+	long long total_ms = 0;
+	int solved_count = 0;
+	std::vector<long long> solve_times_ms;
+	std::vector<size_t> solve_move_counts;
+
+	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-3, DFS fixed-depth + banned_next_moves pruning) ===\n";
+
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
+		Cube cube = Cube();
+		std::vector<std::string> scramble = cube.scramble(SCRAMBLE_SIZE);
+		Solver solver = Solver(cube);
+
+		auto solve_start = std::chrono::steady_clock::now();
+		solver.dfs();
+		auto solve_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - solve_start).count();
+
+		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
+		bool solved = solution.second.size() > 0;
+
+		std::string scramble_str;
+		for (const std::string& mv : scramble) {
+			scramble_str += mv + ", ";
+		}
+
+		std::string line = "Solve " + std::to_string(n + 1) + ": " + (solved ? "SOLVED" : "NO SOLUTION FOUND") +
+			" | Time: " + std::to_string(solve_ms) + "ms | Scramble: " + scramble_str + "\n";
+		std::cout << line;
+
+		if (solved) {
+			total_ms += solve_ms;
+			solved_count++;
+			solve_times_ms.push_back(solve_ms);
+			solve_move_counts.push_back(solution.first.size() + solution.second.size());
+		}
+	}
+
+	std::string summary = "Solved " + std::to_string(solved_count) + "/" + std::to_string(NUM_SCRAMBLES) +
+		" scrambles of size " + std::to_string(SCRAMBLE_SIZE) +
+		(solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
+		                   : ". No successful solves to average.\n");
+	std::cout << summary;
+
+	if (solved_count > 0) {
+		std::vector<long long> sorted_times(solve_times_ms);
+		std::sort(sorted_times.begin(), sorted_times.end());
+		long long median_ms = sorted_times[sorted_times.size() / 2];
+		long long min_ms = sorted_times.front();
+		long long max_ms = sorted_times.back();
+
+		size_t total_moves = 0;
+		for (size_t mc : solve_move_counts) {
+			total_moves += mc;
+		}
+		double avg_moves = (double)total_moves / solve_move_counts.size();
+
+		std::string extra_stats = "Median solve time: " + std::to_string(median_ms) + "ms | Min: " + std::to_string(min_ms) +
+			"ms | Max: " + std::to_string(max_ms) + "ms | Average moves in solution: " + std::to_string(avg_moves) + "\n";
+		std::cout << extra_stats;
+	}
 
 	return 0;
 }
