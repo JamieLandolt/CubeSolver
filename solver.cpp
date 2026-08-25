@@ -601,7 +601,6 @@ std::vector<std::string> random_scramble(int scramble_size, std::mt19937& gen, c
 }
 
 int main(int argc, char** argv) {
-	std::ofstream file("benchmarks.txt");
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2", "R'"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 	const int SEARCH_DEPTH_CAP = 20;
@@ -610,12 +609,10 @@ int main(int argc, char** argv) {
 	std::cout << "Running non domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
 	BenchmarkResult regular = explore_benchmark(MOVES, SEARCH_DEPTH_CAP, BENCH_DURATION);
 	log_benchmark_result(std::cout, "Non domino reduced search (bmark-1)", regular);
-	log_benchmark_result(file, "Non domino reduced search (bmark-1)", regular);
 
 	std::cout << "Running domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
 	BenchmarkResult domino = explore_benchmark(DOMINO_MOVES, SEARCH_DEPTH_CAP, BENCH_DURATION);
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-1)", domino);
-	log_benchmark_result(file, "Domino reduced search (bmark-1)", domino);
 
 	// Average time to solve scrambles of size 5 (existing Solver/dfs() path, unmodified)
 	std::mt19937 gen(std::random_device{}());
@@ -626,7 +623,6 @@ int main(int argc, char** argv) {
 	std::vector<long long> solve_times_ms;
 	std::vector<size_t> solve_move_counts;
 
-	file << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-1, DFS fixed-depth) ===\n";
 	std::cout << "=== Solves of size " << SCRAMBLE_SIZE << " (bmark-1, DFS fixed-depth) ===\n";
 
 	for (int n = 0; n < NUM_SCRAMBLES; n++) {
@@ -650,7 +646,6 @@ int main(int argc, char** argv) {
 
 		std::string line = "Solve " + std::to_string(n + 1) + ": " + (solved ? "SOLVED" : "NO SOLUTION FOUND") +
 			" | Time: " + std::to_string(solve_ms) + "ms | Scramble: " + scramble_str + "\n";
-		file << line;
 		std::cout << line;
 
 		if (solved) {
@@ -665,7 +660,6 @@ int main(int argc, char** argv) {
 		" scrambles of size " + std::to_string(SCRAMBLE_SIZE) +
 		(solved_count > 0 ? (". Average solve time (successful solves only): " + std::to_string(total_ms / solved_count) + "ms\n")
 		                   : ". No successful solves to average.\n");
-	file << summary;
 	std::cout << summary;
 
 	if (solved_count > 0) {
@@ -683,7 +677,6 @@ int main(int argc, char** argv) {
 
 		std::string extra_stats = "Median solve time: " + std::to_string(median_ms) + "ms | Min: " + std::to_string(min_ms) +
 			"ms | Max: " + std::to_string(max_ms) + "ms | Average moves in solution: " + std::to_string(avg_moves) + "\n";
-		file << extra_stats;
 		std::cout << extra_stats;
 	}
 
