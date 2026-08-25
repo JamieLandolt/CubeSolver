@@ -492,8 +492,8 @@ public:
 
 int main(int argc, char** argv) {
 	Cube cube = Cube();
-	// std::vector<std::string> scramble = {"R", "U", "F", "R2", "B'", "D2"};
-	std::vector<std::string> scramble = {"U", "F", "R2", "B'", "D2"};
+	// Hardcoded scramble for gprof profiling: solves in ~2s at this commit (verified).
+	std::vector<std::string> scramble = {"B", "R2", "U'", "F", "D2"};
 	cube.execute_moves(scramble);
 	Solver solver = Solver(cube);
 	solver.dfs();
