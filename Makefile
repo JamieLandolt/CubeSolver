@@ -1,5 +1,5 @@
 all:
-	g++ solver.cpp -o solver
+	g++ solver.cpp -O2 -o solver
 debug:
 	g++ -g solver.cpp -o debugSolver
 clean:
