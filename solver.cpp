@@ -343,8 +343,8 @@ public:
 				// Wall-clock safety cap: abort if a single dfs() call runs too long
 				dfs_iterations++;
 				if (dfs_iterations % 1000 == 0 &&
-					std::chrono::steady_clock::now() - dfs_start_time > std::chrono::seconds(60)) {
-					std::cout << "dfs() timed out after 60 seconds\n";
+					std::chrono::steady_clock::now() - dfs_start_time > std::chrono::seconds(20)) {
+					std::cout << "dfs() timed out after 20 seconds\n";
 					return;
 				}
 
