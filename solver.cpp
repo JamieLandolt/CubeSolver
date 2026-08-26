@@ -331,22 +331,42 @@ private:
 	std::vector<int> corner_orientations;
 	std::vector<int> edge_orientations;
 
+	// Phase 3: precomputed "last 9 domino moves to solved" lookup, generated once
+	// per Solver. This was implemented and wired in at d490372 but the wiring
+	// (this call, and the solution_paths lookup in check_state()/dfs() below) was
+	// accidentally dropped one commit later while porting forward an unrelated fix
+	// from bmark-5 - generate_solution_lookup() itself was left behind as dead
+	// code, unused, ever since (same regression as bmark-6, since gprof-6 forked
+	// from the same broken state). Restored to match bmark-7's usage.
+	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
-	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
 								{'D', std::unordered_set<char>{'D'}},
 								{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
 								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
-	
+
 public:
 	int DEPTH_PHASE_1 = 12;
 	int DEPTH_PHASE_2 = 18;
 
 	Solver(Cube& external_cube) : cube(external_cube) {
+		solution_paths = cube.generate_solution_lookup(9);
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
 		edge_orientations = orientations.second;
+	}
+
+	std::list<std::string> get_lookup_moves(std::pair<long,long> state) {
+		std::list<std::string> sol;
+		PathEntry path = solution_paths[state];
+		while (path.move.size()) {
+			sol.push_back(path.move);
+			path = solution_paths[path.parent_state];
+		}
+		return sol;
 	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
@@ -420,8 +440,12 @@ public:
 				int phase_complete = check_state(corners, edges);
 
 				if (phase_complete == 2) {
-					// Solved state has been found
+					// Reached solved, or a state within the Phase-3 lookup's 9-move
+					// coverage of solved (the lookup includes the solved state
+					// itself at depth 0, so this covers the exact-match case too).
 					solution.second = state_moves;
+					std::list<std::string> lookup_moves = get_lookup_moves({corners, edges});
+					solution.second.splice(solution.second.end(), lookup_moves);
 					return;
 				}
 
@@ -509,7 +533,7 @@ public:
 		int num_corners = 8;
 		int num_edges = 12;
 
-		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
+		if (solution_paths.count(std::make_pair(corners, edges))) {
 			return 2;
 		}
 
@@ -645,8 +669,17 @@ void benchmark_solves() {
 }
 
 int main(int argc, char** argv) {
-	// Hardcoded 7-move scramble, solves in ~9s with the pruning bug fixed (see cfd582e)
-	std::vector<std::string> scramble = {"R", "U", "F", "L", "D", "B", "R"};
+	// Hardcoded 20-move scramble. The old 7-move scramble here (~9s under the
+	// prior pruning-fixed build) would solve near-instantly now that Phase-3
+	// is restored (see the Solver class above) - profiling it would produce an
+	// almost-empty flat profile. Generating the Phase-3 table itself is a fixed
+	// ~25s cost (in a local -O2, non-profiled build) independent of the target
+	// scramble, and will scale further under -pg instrumentation overhead
+	// (similar to gprof-3's real-hardware slowdown) - kept the actual solve
+	// modest (~44ms locally) rather than picking something large on top of
+	// that, to keep total runtime bounded under the SLURM walltime.
+	std::vector<std::string> scramble = {"F2", "R2", "B2", "R2", "D2", "L2", "D2", "F2", "R2", "D'",
+		"F2", "D2", "L", "D2", "L2", "U", "F'", "R2", "D'", "R2"};
 	solve(scramble);
 
 	return 0;
