@@ -603,7 +603,7 @@ int main(int argc, char** argv) {
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-4, bit-shift/long state)", domino_result);
 
 	// Solve-time table across scramble sizes: 10 solves per size (bmark-4, bit-shift/long state)
-	const int NUM_SCRAMBLES = 10;
+	const int NUM_SCRAMBLES = 30;
 
 	Cube cube;
 	Solver solver = Solver(cube);
