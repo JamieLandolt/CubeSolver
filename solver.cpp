@@ -186,7 +186,7 @@ public:
 		std::string last = "";
 		for (int i = 0; i < scramble_size; i++) {
 			std::string move = MOVES[dist(gen)];
-			if (i != 0 && !banned_next_moves[move[0]].count(last[0])) {
+			if (i != 0 && banned_next_moves[move[0]].count(last[0])) {
 				i--;
 				continue;
 			}
