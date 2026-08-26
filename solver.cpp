@@ -621,7 +621,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "=== Solve-time table (bmark-4, bit-shift/long state) ===\n";
 
-	for (int scramble_size = 5; ; scramble_size += 5) {
+	for (int scramble_size = 5; ; scramble_size += (scramble_size < 10 ? 1 : 5)) {
 		long long total_ms = 0;
 		int solved_count = 0;
 		std::vector<long long> solve_times_ms;
