@@ -853,7 +853,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "=== Solve-time scaling table (bmark-3, DFS fixed-depth + banned_next_moves pruning) ===\n";
 
-	for (int scramble_size = SIZE_STEP; scramble_size <= MAX_SIZE; scramble_size += SIZE_STEP) {
+	for (int scramble_size = SIZE_STEP; scramble_size <= MAX_SIZE; scramble_size += (scramble_size < 10 ? 1 : SIZE_STEP)) {
 		long long total_ms = 0;
 		int solved_count = 0;
 		std::vector<long long> solve_times_ms;
