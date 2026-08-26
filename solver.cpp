@@ -471,13 +471,13 @@ public:
 					continue;
 				}
 
+				// Based on the orientation of the corners and edges
+				// Finds the minimum moves needed to solve the case
+				// Works for both Phase 1 & 2
+				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+
 				// Search child nodes
 				for (std::string move : move_space) {
-					// Based on the orientation of the corners and edges
-					// Finds the minimum moves needed to solve the case
-					// Works for both Phase 1 & 2
-					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
-
 					// If it takes more moves than are left in the search to solve, don't bother searching
 					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
@@ -490,7 +490,7 @@ public:
 					if (depth < search_depth) {
 						std::list<std::string> next_state_moves = state_moves;
 						std::pair<long,long> state = cube.move(move, corners, edges);
-							
+
 						// Store if we haven't been in the state before
 						if (!visited.count(state)) {
 							depths.push(depth + 1);
@@ -790,20 +790,18 @@ int main(int argc, char** argv) {
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-6, DR-space optimisation, pruning bug fixed)", domino_result);
 
-	// Solve-time table at sizes 5 and 6. This branch hits a sharp performance
-	// cliff (not a gradual slowdown) between size 6 and size 7: manual testing
-	// showed size 6 solving reliably in well under a second, while size 7-8
-	// took several MINUTES per solve even with the 60s-per-depth-level safety
-	// cap in dfs() (which allows up to DEPTH_PHASE_2 x 60s worst case). A full
-	// step-by-5 scaling sweep past size 6 is not practical here, so this table
-	// stops at 6 rather than hang for a very long time to confirm what's
-	// already been established.
+	// Solve-time table, stepping size by 5 (5, 10, 15, ...), stopping after the
+	// first size where the average solve time exceeds 30s or fewer than half
+	// the scrambles solve. dfs() previously recomputed ori_to_int() on every
+	// candidate move instead of once per node (same bug already fixed in the
+	// explore_benchmark() copy above) - now that it's hoisted here too, re-run
+	// this table from scratch rather than assume the old size-6 ceiling still
+	// holds.
 	const int NUM_SCRAMBLES = 10;
-	const int SIZES[] = {5, 6};
 	Cube solveCube;
 	Solver solver(solveCube);
 
-	for (int SCRAMBLE_SIZE : SIZES) {
+	for (int SCRAMBLE_SIZE = 5; ; SCRAMBLE_SIZE += 5) {
 		long long total_ms = 0;
 		int solved_count = 0;
 		std::vector<long long> solve_times_ms;
@@ -850,6 +848,14 @@ int main(int argc, char** argv) {
 			std::cout << "Median solve time: " << sorted_times[sorted_times.size() / 2] << "ms | Min: " << sorted_times.front()
 				<< "ms | Max: " << sorted_times.back() << "ms | Average moves in solution: "
 				<< ((double)total_moves / solve_move_counts.size()) << "\n";
+		}
+
+		bool avg_over_30s = solved_count > 0 && (total_ms / solved_count) > 30000;
+		bool solve_rate_low = solved_count < (NUM_SCRAMBLES / 2);
+		if (avg_over_30s || solve_rate_low) {
+			std::cout << "=== Stopping size increase at " << SCRAMBLE_SIZE
+				<< " (average time exceeded 30s or solve rate dropped below half) ===\n";
+			break;
 		}
 	}
 
