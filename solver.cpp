@@ -812,14 +812,16 @@ struct SolveResult {
 	std::vector<std::string> scramble;
 };
 
-// Runs 10 solves at the given scramble size and prints a report block in the
-// same style as the previous fixed-size-5 benchmark. Returns the average
-// solve time (successful solves only, ms) and the fraction solved, so the
-// caller can decide whether to keep stepping up in size.
+// Runs NUM_SCRAMBLES solves at the given scramble size and prints a report
+// block in the same style as the previous fixed-size-5 benchmark. Returns the
+// average solve time (successful solves only, ms) and the fraction solved, so
+// the caller can decide whether to keep stepping up in size.
+const int NUM_SCRAMBLES = 30;
+
 std::pair<double,double> run_solve_benchmark(int scramble_size) {
 	std::vector<SolveResult> solve_results;
 
-	for (int n = 0; n < 10; n++) {
+	for (int n = 0; n < NUM_SCRAMBLES; n++) {
 		Cube cube;
 		std::vector<std::string> scramble = generate_random_scramble(scramble_size);
 		cube.set_scramble(scramble);
@@ -883,18 +885,18 @@ std::pair<double,double> run_solve_benchmark(int scramble_size) {
 		double avg_moves = (double)move_sum / success_count;
 
 		std::ostringstream ss;
-		ss << "Solved " << success_count << "/10 scrambles of size " << scramble_size << ". Average solve time (successful solves only): "
+		ss << "Solved " << success_count << "/" << NUM_SCRAMBLES << " scrambles of size " << scramble_size << ". Average solve time (successful solves only): "
 		   << format_decimal(avg_time, 1) << "ms."
 		   << " Median: " << format_decimal(median_time, 1) << "ms, Min: " << min_time << "ms, Max: " << max_time << "ms."
 		   << " Average solution length (successful solves only): " << format_decimal(avg_moves, 1) << " moves.";
 		summary = ss.str();
 	} else {
-		summary = "Solved 0/10 scrambles of size " + std::to_string(scramble_size) + ". No successful solves to average.";
+		summary = "Solved 0/" + std::to_string(NUM_SCRAMBLES) + " scrambles of size " + std::to_string(scramble_size) + ". No successful solves to average.";
 	}
 
 	std::cout << summary << "\n";
 
-	return std::make_pair(avg_time, (double)success_count / 10.0);
+	return std::make_pair(avg_time, (double)success_count / NUM_SCRAMBLES);
 }
 
 // Steps scramble size up by 5 (5, 10, 15, ...), running 10 solves at each size,
