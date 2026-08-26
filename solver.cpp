@@ -740,7 +740,7 @@ int main(int argc, char** argv) {
 	// value of 9/9 so scramble size is no longer capped by move-budget rather than search speed.
 	// Steps by 5 starting at 5, 10 solves per size, and stops (after reporting) at the first
 	// size where the average solve time exceeds 30s or the solve rate drops below ~half.
-	const int NUM_SCRAMBLES = 10;
+	const int NUM_SCRAMBLES = 30;
 
 	struct SizeStat {
 		int size;
