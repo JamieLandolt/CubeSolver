@@ -805,25 +805,23 @@ void log_benchmark_result(std::ostream& out, const std::string& label, const Ben
 	}
 }
 
-int main(int argc, char** argv) {
-	BenchmarkResult full_space_result = explore_benchmark(BMARK_ALL_MOVES, 20, std::chrono::seconds(10));
-	log_benchmark_result(std::cout, "Non domino reduced search (bmark-2, IDDFS)", full_space_result);
+struct SolveResult {
+	bool success;
+	long long elapsed_ms;
+	int move_count;
+	std::vector<std::string> scramble;
+};
 
-	BenchmarkResult domino_result = explore_benchmark(BMARK_DOMINO_MOVES, 20, std::chrono::seconds(10));
-	log_benchmark_result(std::cout, "Domino reduced search (bmark-2, IDDFS)", domino_result);
-
-	// Size-5 scramble solve benchmark
-	struct SolveResult {
-		bool success;
-		long long elapsed_ms;
-		int move_count;
-		std::vector<std::string> scramble;
-	};
+// Runs 10 solves at the given scramble size and prints a report block in the
+// same style as the previous fixed-size-5 benchmark. Returns the average
+// solve time (successful solves only, ms) and the fraction solved, so the
+// caller can decide whether to keep stepping up in size.
+std::pair<double,double> run_solve_benchmark(int scramble_size) {
 	std::vector<SolveResult> solve_results;
 
 	for (int n = 0; n < 10; n++) {
 		Cube cube;
-		std::vector<std::string> scramble = generate_random_scramble(5);
+		std::vector<std::string> scramble = generate_random_scramble(scramble_size);
 		cube.set_scramble(scramble);
 		Solver solver(cube);
 
@@ -885,16 +883,48 @@ int main(int argc, char** argv) {
 		double avg_moves = (double)move_sum / success_count;
 
 		std::ostringstream ss;
-		ss << "Solved " << success_count << "/10 scrambles of size 5. Average solve time (successful solves only): "
+		ss << "Solved " << success_count << "/10 scrambles of size " << scramble_size << ". Average solve time (successful solves only): "
 		   << format_decimal(avg_time, 1) << "ms."
 		   << " Median: " << format_decimal(median_time, 1) << "ms, Min: " << min_time << "ms, Max: " << max_time << "ms."
 		   << " Average solution length (successful solves only): " << format_decimal(avg_moves, 1) << " moves.";
 		summary = ss.str();
 	} else {
-		summary = "Solved 0/10 scrambles of size 5. No successful solves to average.";
+		summary = "Solved 0/10 scrambles of size " + std::to_string(scramble_size) + ". No successful solves to average.";
 	}
 
 	std::cout << summary << "\n";
+
+	return std::make_pair(avg_time, (double)success_count / 10.0);
+}
+
+// Steps scramble size up by 5 (5, 10, 15, ...), running 10 solves at each size,
+// as long as the average solve time stays under 30s and at least half the
+// scrambles solve. The first size that breaks either threshold is still
+// reported, then stepping stops -- that row marks this branch's real limit.
+void run_solve_benchmark_table() {
+	const double MAX_AVG_MS = 30000.0;
+	const double MIN_SOLVE_RATE = 0.5;
+
+	for (int scramble_size = 5; ; scramble_size += 5) {
+		std::cout << "\n=== Scramble size " << scramble_size << " ===\n";
+		std::pair<double,double> result = run_solve_benchmark(scramble_size);
+		double avg_ms = result.first;
+		double solve_rate = result.second;
+
+		if (avg_ms > MAX_AVG_MS || solve_rate < MIN_SOLVE_RATE) {
+			break;
+		}
+	}
+}
+
+int main(int argc, char** argv) {
+	BenchmarkResult full_space_result = explore_benchmark(BMARK_ALL_MOVES, 20, std::chrono::seconds(10));
+	log_benchmark_result(std::cout, "Non domino reduced search (bmark-2, IDDFS)", full_space_result);
+
+	BenchmarkResult domino_result = explore_benchmark(BMARK_DOMINO_MOVES, 20, std::chrono::seconds(10));
+	log_benchmark_result(std::cout, "Domino reduced search (bmark-2, IDDFS)", domino_result);
+
+	run_solve_benchmark_table();
 
 	return 0;
 }
