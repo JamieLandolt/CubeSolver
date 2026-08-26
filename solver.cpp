@@ -452,7 +452,7 @@ public:
 				dfs_iteration_count++;
 				if (dfs_iteration_count % 1000 == 0) {
 					auto dfs_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - dfs_start_time);
-					if (dfs_elapsed.count() > 60) {
+					if (dfs_elapsed.count() > 20) {
 						std::cout << "dfs() timed out after " << dfs_elapsed.count() << "s, returning early\n";
 						return;
 					}
