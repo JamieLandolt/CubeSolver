@@ -407,13 +407,13 @@ public:
 					continue;
 				}
 
+				// Based on the orientation of the corners and edges
+				// Finds the minimum moves needed to solve the case
+				// Works for both Phase 1 & 2
+				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+
 				// Search child nodes
 				for (std::string move : move_space) {
-					// Based on the orientation of the corners and edges
-					// Finds the minimum moves needed to solve the case
-					// Works for both Phase 1 & 2
-					std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
-
 					// If it takes more moves than are left in the search to solve, don't bother searching
 					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
 						break;
