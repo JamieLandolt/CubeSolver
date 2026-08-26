@@ -835,7 +835,7 @@ int main(int argc, char** argv) {
 	// Steps size by 5 (5, 10, 15, ...), 10 solves per size, stopping once the average solve
 	// time exceeds 30s or the solve rate drops below half, but always reporting the size that
 	// triggered the stop.
-	const int NUM_SCRAMBLES = 10;
+	const int NUM_SCRAMBLES = 30;
 	const int SIZE_STEP = 5;
 	const int MAX_SIZE = 50;
 
