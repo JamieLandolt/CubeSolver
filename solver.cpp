@@ -760,7 +760,7 @@ std::pair<int,double> benchmark_solve_times(int scramble_size) {
 	Solver solver = Solver(cube);
 	Timer timer = Timer();
 
-	const int NUM_SOLVES = 10;
+	const int NUM_SOLVES = 30;
 	std::vector<long> times;
 	std::vector<int> move_counts;
 	int solved_count = 0;
