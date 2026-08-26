@@ -609,7 +609,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "\n=== bmark-1 solve-size table (DFS fixed-depth, DEPTH_PHASE_1=" << 5 << ", DEPTH_PHASE_2=" << 12 << ") ===\n";
 
-	for (int SCRAMBLE_SIZE = 5; ; SCRAMBLE_SIZE += 5) {
+	for (int SCRAMBLE_SIZE = 5; ; SCRAMBLE_SIZE += (SCRAMBLE_SIZE < 10 ? 1 : 5)) {
 		long long total_ms = 0;
 		int solved_count = 0;
 		std::vector<long long> solve_times_ms;
