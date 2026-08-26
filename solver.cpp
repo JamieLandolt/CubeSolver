@@ -858,7 +858,7 @@ int main(int argc, char** argv) {
 	// beyond this are roughly equivalent difficulty (God's number is 20 in HTM),
 	// and each Solver here rebuilds a ~25M-entry Phase-3 table once up front, so
 	// letting this run unbounded risks blowing rangpur's 14-minute walltime.
-	const int NUM_SCRAMBLES = 10;
+	const int NUM_SCRAMBLES = 30;
 	const int MAX_SIZE = 25;
 	Cube solveCube;
 	Solver solver(solveCube);
