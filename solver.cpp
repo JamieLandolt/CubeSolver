@@ -755,7 +755,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "=== Scaling solve-time table (bmark-5, DFS with search-path pruning) ===\n";
 
-	for (int scramble_size = 5; ; scramble_size += 5) {
+	for (int scramble_size = 5; ; scramble_size += (scramble_size < 10 ? 1 : 5)) {
 		Cube solve_cube = Cube();
 		Solver solve_solver = Solver(solve_cube);
 
