@@ -907,7 +907,7 @@ void run_solve_benchmark_table() {
 	const double MAX_AVG_MS = 30000.0;
 	const double MIN_SOLVE_RATE = 0.5;
 
-	for (int scramble_size = 5; ; scramble_size += 5) {
+	for (int scramble_size = 5; ; scramble_size += (scramble_size < 10 ? 1 : 5)) {
 		std::cout << "\n=== Scramble size " << scramble_size << " ===\n";
 		std::pair<double,double> result = run_solve_benchmark(scramble_size);
 		double avg_ms = result.first;
