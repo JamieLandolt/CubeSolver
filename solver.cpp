@@ -676,34 +676,64 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	std::vector<int> corner_orientations = orientations.first;
 	std::vector<int> edge_orientations = orientations.second;
 
-	// Seed the benchmark from a scrambled state so the pruning bound has meaningful
-	// "moves remaining" values to actually prune against.
-	std::pair<std::vector<std::string>,std::pair<long,long>> scrambled = cube.random_scramble(8, 12);
-	long start_corners = scrambled.second.first;
-	long start_edges = scrambled.second.second;
-
-	BenchmarkResult result{0, 0, 0};
-
-	auto start_time = std::chrono::steady_clock::now();
-
 	// Single continuous DFS up to search_depth_limit, with one visited set for the
 	// whole run - matches bmark-3/bmark-5's explore_benchmark() structure. (A prior
 	// version of this function wrapped the DFS in an outer per-depth restart loop
 	// that reset the stack/visited set from scratch at every depth level, which is
 	// the same benchmark-harness bug found and fixed on bmark-4: it forces repeated
 	// re-exploration of the same shallow states instead of completing one deep pass.)
+	//
+	// Per-node state only ever needs the *last* move's face to check
+	// banned_next_moves - a std::stack<char> instead of bmark-4/5's own fix
+	// (last_move_chars) had not been ported here yet, so this still carried a
+	// std::stack<std::list<std::string>> that deep-copied the entire move path
+	// on every single push, even though nothing but move_list.back()[0] was ever
+	// read from it. That's O(depth) wasted allocation/copy work per node, which
+	// is why this branch's states/sec was far below bmark-5's despite using the
+	// same traversal and pruning logic.
 	std::stack<int> depths;
-	std::stack<std::list<std::string>> moves;
+	std::stack<char> last_move_chars;
 	std::stack<long> corner_states;
 	std::stack<long> edge_states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
-	depths.push(0);
-	moves.push(std::list<std::string>{});
-	corner_states.push(start_corners);
-	edge_states.push(start_edges);
+	// Seed (and, if the branch runs dry before the duration elapses, reseed) from
+	// a 20-move scramble so the pruning bound has meaningful "moves remaining"
+	// values to actually prune against - matches bmark-5's reseed() exactly. This
+	// branch previously seeded from a much shallower 8-move scramble with no
+	// reseed at all, despite its own comment above claiming to match bmark-5's
+	// structure: from a near-solved state the orientation lower bound rarely
+	// exceeds the remaining budget, so pruning barely engages and the states/sec
+	// figure isn't measuring the same thing bmark-5's is.
+	auto reseed = [&]() {
+		std::stack<int> empty_depths;
+		std::swap(depths, empty_depths);
+		std::stack<char> empty_last;
+		std::swap(last_move_chars, empty_last);
+		std::stack<long> empty_corners;
+		std::swap(corner_states, empty_corners);
+		std::stack<long> empty_edges;
+		std::swap(edge_states, empty_edges);
+		visited.clear();
 
-	while (depths.size() > 0) {
+		std::pair<std::vector<std::string>,std::pair<long,long>> scrambled = cube.random_scramble(20, 9);
+		depths.push(0);
+		last_move_chars.push('\0');
+		corner_states.push(scrambled.second.first);
+		edge_states.push(scrambled.second.second);
+	};
+
+	reseed();
+
+	BenchmarkResult result{0, 0, 0};
+
+	auto start_time = std::chrono::steady_clock::now();
+
+	while (true) {
+		if (depths.size() == 0) {
+			reseed();
+		}
+
 		result.states_explored++;
 		result.total_depth_searched += depths.top();
 		if (result.states_explored % 1000 == 0) {
@@ -716,10 +746,10 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 		int depth = depths.top();
 		long corners = corner_states.top();
 		long edges = edge_states.top();
-		std::list<std::string> state_moves(moves.top());
+		char last_move_char = last_move_chars.top();
 
 		depths.pop();
-		moves.pop();
+		last_move_chars.pop();
 		corner_states.pop();
 		edge_states.pop();
 
@@ -740,17 +770,15 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 				break;
 			}
 
-			if (state_moves.size() > 0 && banned_next_moves[state_moves.back()[0]].count(move[0])) {
+			if (last_move_char != '\0' && banned_next_moves[last_move_char].count(move[0])) {
 				continue;
 			}
 			if (depth < search_depth_limit) {
-				std::list<std::string> next_state_moves = state_moves;
 				std::pair<long,long> state = cube.move(move, corners, edges);
 
 				if (!visited.count(state)) {
 					depths.push(depth + 1);
-					next_state_moves.push_back(move);
-					moves.push(next_state_moves);
+					last_move_chars.push(move[0]);
 
 					corner_states.push(state.first);
 					edge_states.push(state.second);
