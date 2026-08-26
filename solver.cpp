@@ -755,7 +755,7 @@ void benchmark_states_explored() {
 
 // Solve-time benchmark at a single, well-chosen scramble size (bmark-1/bmark-2 reporting style):
 // solved-count, avg/median/min/max solve time, and avg moves in solution.
-void benchmark_solve_times(int scramble_size) {
+std::pair<int,double> benchmark_solve_times(int scramble_size) {
 	Cube cube;
 	Solver solver = Solver(cube);
 	Timer timer = Timer();
@@ -792,19 +792,37 @@ void benchmark_solve_times(int scramble_size) {
 	}
 
 	std::cout << "Solved " << solved_count << "/" << NUM_SOLVES << " scrambles of size " << scramble_size;
+	double avg_time = 0.0;
 	if (solved_count > 0) {
-		std::cout << ". Average solve time (successful solves only): " << timer.avg(times) << "ms\n";
+		avg_time = timer.avg(times);
+		std::cout << ". Average solve time (successful solves only): " << avg_time << "ms\n";
 		double avg_moves = (double)std::accumulate(move_counts.begin(), move_counts.end(), 0) / move_counts.size();
 		std::cout << "Median solve time: " << timer.median(times) << "ms | Min: " << *std::min_element(times.begin(), times.end())
 				   << "ms | Max: " << *std::max_element(times.begin(), times.end()) << "ms | Average moves in solution: " << avg_moves << "\n";
 	} else {
 		std::cout << ". No successful solves to average.\n";
 	}
+	return std::make_pair(solved_count, avg_time);
 }
 
 int main(int argc, char** argv) {
 	benchmark_states_explored();
-	benchmark_solve_times(50);
+
+	// Full scaling table: step size by 5 starting at 5, stop once average solve time
+	// exceeds 30s (or solve rate drops meaningfully), still reporting that final row.
+	// Capped at 25: scrambles beyond this are roughly equivalent difficulty (the
+	// cube's diameter is bounded - "God's number" is 20 in HTM), so testing further
+	// just adds noise, not information.
+	for (int size = 5; size <= 25; size += 5) {
+		std::pair<int,double> result = benchmark_solve_times(size);
+		int solved_count = result.first;
+		double avg_time = result.second;
+
+		if (avg_time > 30000.0 || solved_count < 7) {
+			std::cout << "=== Stopping scaling sweep at size " << size << " ===\n";
+			break;
+		}
+	}
 	// std::vector<std::string> scramble = {"F", "U'", "F2", "D'", "B", "U", "R'", "F", "L", "D'", "R'", "U'", "L", "U", "B'", "D2", "R'", "F", "U2", "D2"};
 
 	// solve(scramble);
