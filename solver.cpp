@@ -859,7 +859,7 @@ int main(int argc, char** argv) {
 	// and each Solver here rebuilds a ~25M-entry Phase-3 table once up front, so
 	// letting this run unbounded risks blowing rangpur's 14-minute walltime.
 	const int NUM_SCRAMBLES = 30;
-	const int MAX_SIZE = 25;
+	const int MAX_SIZE = 40;
 	Cube solveCube;
 	Solver solver(solveCube);
 
