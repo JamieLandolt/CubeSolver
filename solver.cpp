@@ -810,10 +810,12 @@ int main(int argc, char** argv) {
 
 	// Full scaling table: step size by 5 starting at 5, stop once average solve time
 	// exceeds 30s (or solve rate drops meaningfully), still reporting that final row.
-	// Capped at 25: scrambles beyond this are roughly equivalent difficulty (the
-	// cube's diameter is bounded - "God's number" is 20 in HTM), so testing further
-	// just adds noise, not information.
-	for (int size = 5; size <= 25; size += 5) {
+	// Raised from a 25 cap to 40: at size 25 both this branch and bmark-6 were still
+	// averaging well under the 30s stop threshold, so 25 was an arbitrary cutoff (on
+	// the "God's number ~20 in HTM" theory) rather than the real break condition
+	// actually firing - extending lets the natural stop condition find where each
+	// branch really tops out, for a direct bmark-6 vs bmark-7 comparison at harder sizes.
+	for (int size = 5; size <= 40; size += 5) {
 		std::pair<int,double> result = benchmark_solve_times(size);
 		int solved_count = result.first;
 		double avg_time = result.second;
