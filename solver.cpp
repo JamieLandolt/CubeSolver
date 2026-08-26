@@ -240,8 +240,8 @@ public:
 				if (dfs_iterations % 1000 == 0) {
 					auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
 						std::chrono::steady_clock::now() - dfs_start_time);
-					if (elapsed.count() > 60) {
-						std::cout << "dfs() timed out after 60 seconds\n";
+					if (elapsed.count() > 20) {
+						std::cout << "dfs() timed out after 20 seconds\n";
 						return;
 					}
 				}
