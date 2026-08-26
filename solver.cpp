@@ -332,22 +332,47 @@ private:
 	std::vector<int> corner_orientations;
 	std::vector<int> edge_orientations;
 
+	// Phase 3: precomputed "last 9 domino moves to solved" lookup, generated once
+	// per Solver. This was implemented and wired in at d490372 but the wiring
+	// (this call, and the solution_paths lookup in check_state()/dfs() below) was
+	// accidentally dropped one commit later while porting forward an unrelated fix
+	// from bmark-5 - generate_solution_lookup() itself was left behind as dead
+	// code, unused, ever since. Restored here to match bmark-7's usage exactly
+	// (bmark-7 additionally replaces the move-path bookkeeping with DFSEntry
+	// parent-pointer chains; that part is a separate optimisation, not restored
+	// here, so this branch keeps its own std::list<std::string> path tracking).
+	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
+
 	std::pair<std::list<std::string>,std::list<std::string>> solution;
 	Cube& cube;
 
-	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}}, 
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
 								{'D', std::unordered_set<char>{'D'}},
 								{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
 								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
-	
+
 public:
 	int DEPTH_PHASE_1 = 12;
 	int DEPTH_PHASE_2 = 18;
 
 	Solver(Cube& external_cube) : cube(external_cube) {
+		solution_paths = cube.generate_solution_lookup(9);
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
 		edge_orientations = orientations.second;
+	}
+
+	// Walks the Phase-3 lookup from a state back to solved, returning moves in
+	// forward (state -> solved) order so it can be appended straight onto the
+	// path taken to reach that state. Mirrors bmark-7's get_moves(PathEntry).
+	std::list<std::string> get_lookup_moves(std::pair<long,long> state) {
+		std::list<std::string> sol;
+		PathEntry path = solution_paths[state];
+		while (path.move.size()) {
+			sol.push_back(path.move);
+			path = solution_paths[path.parent_state];
+		}
+		return sol;
 	}
 
 	std::pair<std::list<std::string>,std::list<std::string>> get_solution() {
@@ -431,8 +456,12 @@ public:
 				int phase_complete = check_state(corners, edges);
 
 				if (phase_complete == 2) {
-					// Solved state has been found
+					// Reached solved, or a state within the Phase-3 lookup's 9-move
+					// coverage of solved (the lookup includes the solved state
+					// itself at depth 0, so this covers the exact-match case too).
 					solution.second = state_moves;
+					std::list<std::string> lookup_moves = get_lookup_moves({corners, edges});
+					solution.second.splice(solution.second.end(), lookup_moves);
 					return;
 				}
 
@@ -520,7 +549,7 @@ public:
 		int num_corners = 8;
 		int num_edges = 12;
 
-		if (corners == CORNERS_SOLVED && edges == EDGES_SOLVED) {
+		if (solution_paths.count(std::make_pair(corners, edges))) {
 			return 2;
 		}
 
@@ -824,12 +853,17 @@ int main(int argc, char** argv) {
 	// candidate move instead of once per node (same bug already fixed in the
 	// explore_benchmark() copy above) - now that it's hoisted here too, re-run
 	// this table from scratch rather than assume the old size-6 ceiling still
-	// holds.
+	// holds. With the Phase-3 lookup restored (see Solver, above) this branch
+	// now solves far past that old ceiling, so cap at 25 like bmark-7: scrambles
+	// beyond this are roughly equivalent difficulty (God's number is 20 in HTM),
+	// and each Solver here rebuilds a ~25M-entry Phase-3 table once up front, so
+	// letting this run unbounded risks blowing rangpur's 14-minute walltime.
 	const int NUM_SCRAMBLES = 10;
+	const int MAX_SIZE = 25;
 	Cube solveCube;
 	Solver solver(solveCube);
 
-	for (int SCRAMBLE_SIZE = 5; ; SCRAMBLE_SIZE += 5) {
+	for (int SCRAMBLE_SIZE = 5; SCRAMBLE_SIZE <= MAX_SIZE; SCRAMBLE_SIZE += 5) {
 		long long total_ms = 0;
 		int solved_count = 0;
 		std::vector<long long> solve_times_ms;
