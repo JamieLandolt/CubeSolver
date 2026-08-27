@@ -558,6 +558,85 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	return result;
 }
 
+struct IddfsResult {
+	long long states_explored = 0;
+	int max_depth_completed = 0;
+	long long elapsed_ms = 0;
+};
+
+// True IDDFS: restarts a fresh bounded DFS pass (its own visited set, from the
+// solved state) at increasing depth limits 1, 2, 3, ..., stopping once the total
+// time budget is used up. A depth level only counts as "reached" if that entire
+// pass finished within budget - a pass cut short mid-way is discarded, since the
+// point of IDDFS is that every shallower level is fully exhausted before going
+// deeper. This is unlike explore_benchmark() above, which is a single continuous
+// DFS pass that can reach a nominal depth almost instantly just by descending one
+// path, without ever completing a full level - it measures raw traversal
+// throughput, not real IDDFS depth capability.
+IddfsResult iddfs_benchmark(const std::vector<std::string>& move_space, int max_depth_limit, std::chrono::seconds duration) {
+	Cube cube = Cube();
+	IddfsResult result;
+	auto start = std::chrono::steady_clock::now();
+
+	for (int depth_limit = 1; depth_limit <= max_depth_limit; depth_limit++) {
+		std::stack<int> depths;
+		std::stack<std::vector<std::pair<int,int>>> corner_states;
+		std::stack<std::vector<std::pair<int,int>>> edge_states;
+		std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+
+		std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> start_state = cube.get_state();
+		depths.push(0);
+		corner_states.push(start_state.first);
+		edge_states.push(start_state.second);
+
+		bool timed_out = false;
+		while (depths.size() > 0) {
+			if (result.states_explored % 1000 == 0 && std::chrono::steady_clock::now() - start >= duration) {
+				timed_out = true;
+				break;
+			}
+
+			int depth = depths.top();
+			std::vector<std::pair<int,int>> corners(corner_states.top());
+			std::vector<std::pair<int,int>> edges(edge_states.top());
+
+			depths.pop();
+			corner_states.pop();
+			edge_states.pop();
+
+			visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
+			result.states_explored++;
+
+			if (depth + 1 <= depth_limit) {
+				for (const std::string& move : move_space) {
+					cube.set_state(corners, edges);
+					cube.move(move);
+					std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+					if (!visited.count(std::make_pair(encodeVec1(p.first), encodeVec2(p.second)))) {
+						depths.push(depth + 1);
+						corner_states.push(p.first);
+						edge_states.push(p.second);
+					}
+				}
+			}
+		}
+
+		if (timed_out) break;
+		result.max_depth_completed = depth_limit;
+	}
+
+	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	return result;
+}
+
+void log_iddfs_result(std::ostream& out, const std::string& label, const IddfsResult& r) {
+	out << "=== " << label << " (true IDDFS) ===\n";
+	out << "States explored: " << r.states_explored << "\n";
+	out << "Max depth FULLY COMPLETED: " << r.max_depth_completed << "\n";
+	out << "Elapsed: " << r.elapsed_ms << "ms\n";
+	out << "\n";
+}
+
 void log_benchmark_result(std::ostream& out, const std::string& label, const BenchmarkResult& r) {
 	out << "=== " << label << " ===\n";
 	out << "States explored: " << r.states_explored << "\n";
@@ -600,6 +679,14 @@ int main(int argc, char** argv) {
 	std::cout << "Running domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
 	BenchmarkResult domino = explore_benchmark(DOMINO_MOVES, SEARCH_DEPTH_CAP, BENCH_DURATION);
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-1)", domino);
+
+	std::cout << "Running true IDDFS non domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
+	IddfsResult iddfs_regular = iddfs_benchmark(MOVES, 30, BENCH_DURATION);
+	log_iddfs_result(std::cout, "Non domino reduced search (bmark-1)", iddfs_regular);
+
+	std::cout << "Running true IDDFS domino reduced benchmark for " << BENCH_DURATION.count() << "s...\n";
+	IddfsResult iddfs_domino = iddfs_benchmark(DOMINO_MOVES, 30, BENCH_DURATION);
+	log_iddfs_result(std::cout, "Domino reduced search (bmark-1)", iddfs_domino);
 
 	// Average time to solve scrambles at increasing sizes (existing Solver/dfs() path, unmodified).
 	// Steps size by 5 (5, 10, 15, ...), stopping after the first size where the average
