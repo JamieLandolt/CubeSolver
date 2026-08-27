@@ -821,6 +821,101 @@ BenchmarkResult explore_benchmark(const std::vector<std::string>& move_space, in
 	return result;
 }
 
+struct IddfsResult {
+	long long states_explored = 0;
+	int max_depth_completed = 0;
+	long long elapsed_ms = 0;
+};
+
+// True IDDFS: restarts a fresh bounded DFS pass (its own visited set, from the
+// solved state) at increasing depth limits 1, 2, 3, ..., stopping once the total
+// time budget is used up. A depth level only counts as "reached" if that entire
+// pass finished within budget - unlike explore_benchmark() above, which is a
+// single continuous DFS pass that can reach a nominal depth almost instantly
+// just by descending one path without ever completing a full level.
+IddfsResult iddfs_benchmark(const std::vector<std::string>& move_space, int max_depth_limit, std::chrono::seconds duration) {
+	std::unordered_map<char, std::unordered_set<char>> banned_next_moves {{'U', std::unordered_set<char>{'U', 'D'}},
+								{'D', std::unordered_set<char>{'D'}},
+								{'F', std::unordered_set<char>{'F', 'B'}}, {'B', std::unordered_set<char>{'B'}},
+								{'R', std::unordered_set<char>{'R', 'L'}}, {'L', std::unordered_set<char>{'L'}}};
+
+	Cube cube;
+	// get_state() returns references into the Cube's live internal vectors, not
+	// copies - capturing them as explicit value copies here (not reusing the
+	// reference itself across passes) since set_state()/move() below mutate that
+	// same internal state, which would otherwise corrupt this seed after pass 1.
+	std::pair<std::vector<std::pair<int,int>>&,std::vector<std::pair<int,int>>&> live_state = cube.get_state();
+	std::vector<std::pair<int,int>> solved_corners = live_state.first;
+	std::vector<std::pair<int,int>> solved_edges = live_state.second;
+	IddfsResult result;
+	auto start = std::chrono::steady_clock::now();
+
+	for (int depth_limit = 1; depth_limit <= max_depth_limit; depth_limit++) {
+		std::stack<int> depths;
+		std::stack<char> last_moves;
+		std::stack<std::vector<std::pair<int,int>>> corner_states;
+		std::stack<std::vector<std::pair<int,int>>> edge_states;
+		std::unordered_set<std::pair<uint32_t, uint64_t>, StateHash> visited;
+
+		depths.push(0);
+		last_moves.push('\0');
+		corner_states.push(solved_corners);
+		edge_states.push(solved_edges);
+
+		bool timed_out = false;
+		while (depths.size() > 0) {
+			if (result.states_explored % 1000 == 0 && std::chrono::steady_clock::now() - start >= duration) {
+				timed_out = true;
+				break;
+			}
+
+			int depth = depths.top();
+			char last_move = last_moves.top();
+			std::vector<std::pair<int,int>> corners = corner_states.top();
+			std::vector<std::pair<int,int>> edges = edge_states.top();
+
+			depths.pop();
+			last_moves.pop();
+			corner_states.pop();
+			edge_states.pop();
+
+			visited.insert(std::make_pair(encodeVec1(corners), encodeVec2(edges)));
+			result.states_explored++;
+
+			if (depth < depth_limit) {
+				for (const std::string& move : move_space) {
+					if (last_move != '\0' && banned_next_moves[last_move].count(move[0])) {
+						continue;
+					}
+					cube.set_state(corners, edges);
+					cube.move(move);
+					std::pair<std::vector<std::pair<int,int>>,std::vector<std::pair<int,int>>> p = cube.get_state();
+
+					if (!visited.count(std::make_pair(encodeVec1(p.first), encodeVec2(p.second)))) {
+						depths.push(depth + 1);
+						last_moves.push(move[0]);
+						corner_states.push(p.first);
+						edge_states.push(p.second);
+					}
+				}
+			}
+		}
+
+		if (timed_out) break;
+		result.max_depth_completed = depth_limit;
+	}
+
+	result.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	return result;
+}
+
+void log_iddfs_result(std::ostream& out, const std::string& label, const IddfsResult& r) {
+	out << "=== " << label << " (true IDDFS) ===\n";
+	out << "States explored: " << r.states_explored << "\n";
+	out << "Max depth FULLY COMPLETED: " << r.max_depth_completed << "\n";
+	out << "Elapsed: " << r.elapsed_ms << "ms\n\n";
+}
+
 int main(int argc, char** argv) {
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
@@ -830,6 +925,12 @@ int main(int argc, char** argv) {
 
 	BenchmarkResult domino_result = explore_benchmark(DOMINO_MOVES, 20, std::chrono::seconds(10));
 	log_benchmark_result(std::cout, "Domino reduced search (bmark-3, banned_next_moves pruning)", domino_result);
+
+	IddfsResult iddfs_non_domino = iddfs_benchmark(MOVES, 30, std::chrono::seconds(10));
+	log_iddfs_result(std::cout, "Non domino reduced search (bmark-3)", iddfs_non_domino);
+
+	IddfsResult iddfs_domino = iddfs_benchmark(DOMINO_MOVES, 30, std::chrono::seconds(10));
+	log_iddfs_result(std::cout, "Domino reduced search (bmark-3)", iddfs_domino);
 
 	// Solve-time scaling table across scramble sizes (existing Solver/dfs() path, unmodified).
 	// Steps size by 5 (5, 10, 15, ...), 10 solves per size, stopping once the average solve
