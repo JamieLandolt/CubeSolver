@@ -383,7 +383,7 @@ public:
 
 	Solver(Cube& external_cube) : cube(external_cube) {
 		// Precompute the two lookup tables once per solver instance; both are reused across many solves.
-		solution_paths = cube.generate_solution_lookup(9);
+		solution_paths = cube.generate_solution_lookup(8);
 		orientations = cube.generate_orientations();
 		corner_orientations = orientations.first;
 		edge_orientations = orientations.second;
@@ -695,8 +695,20 @@ int main(int argc, char** argv) {
 	// benchmark_solves();
 	std::vector<std::string> scramble = {"U", "R2", "F", "B", "R", "B2", "R", "U2", "L", "B2", "R", "U'", "D'", "R2", "F", "R'", "L", "B2", "U2", "F2"};
 
-
 	solve(scramble);
 
 	return 0;
 }
+
+// #include <omp.h>
+// Compiler flag: -fopenmp
+// #pragma omp parallel [num_threads(num)] { body } default(none), shared(vars), private(vars)
+// #pragma omp for (inside a parallel region)
+// #pragma omp critical (next statement is semaphored) [(name section to allow different critical sections to run in parallel)]
+// omp_get_thread_num()
+// omp_get_num_threads()
+// omp_set_num_threads(num)
+// pragma omp barrier (waits until all threads hit this point)
+// pragma omp for nowait (remove default barrier after for loops)
+// pragma omp master (main thread) / single (any thread, has implicit barrier) (inside a parallel, runs with just one thread) { body } (often paired with barrier)
+// Check the number of threads you get is the amount you are expecting
