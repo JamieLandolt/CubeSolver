@@ -106,7 +106,7 @@ public:
 		return std::make_pair(scramble_moves, execute_moves(scramble_moves, state.first, state.second));
 	}
 
-	std::pair<long,long> to_phase(std::vector<std::string> scramble_moves, std::list<std::string> p1_moves) {
+	std::pair<long,long> to_phase(std::vector<std::string>& scramble_moves, std::list<std::string>& p1_moves) {
 		// Replays the scramble then the phase 1 solution moves, to get the state the phase 2 search should start from.
 		std::pair<long,long> state = get_solved_state();
 		state = execute_moves(scramble_moves, state.first, state.second);
@@ -117,7 +117,7 @@ public:
 		return {CORNERS_SOLVED, EDGES_SOLVED};
 	}
 
-	std::pair<long,long> move(std::string mv, long corners, long edges) {
+	std::pair<long,long> move(std::string& mv, long corners, long edges) {
 		// Parses move notation (e.g. "R", "R2", "R'") into a direction and dispatches to cycle().
 		if (mv.size() == 1) {
 			return cycle(1, mv[0], corners, edges);
@@ -142,7 +142,7 @@ public:
 	}
 
 	// Applies a sequence of moves in order, folding the state through each one. Overloaded for vector and list inputs.
-	std::pair<long,long> execute_moves(std::vector<std::string> moves, long corners, long edges) {
+	std::pair<long,long> execute_moves(std::vector<std::string>& moves, long corners, long edges) {
 		for (std::string m : moves) {
 			std::pair<long,long> state = move(m, corners, edges);
 			corners = state.first;
@@ -277,7 +277,7 @@ public:
 		return std::make_pair(corner_orientations, edge_orientations);
 	}
 
-	std::string invert_move(std::string move) {
+	std::string invert_move(std::string& move) {
 		// Inverts domino reduction moves
 		// Only U/D moves need inverting (half turns and other faces are self-inverse or unused in phase 3).
 		if (move[0] == 'U' || move[0] == 'D') {
@@ -354,8 +354,6 @@ private:
 	std::vector<std::string> MOVES = {"R", "R'", "R2", "L", "L'", "L2", "U", "U'", "U2", "D", "D'", "D2", "F", "F'", "F2", "B", "B'", "B2"};
 	std::vector<std::string> DOMINO_MOVES = {"R2", "L2", "F2", "B2", "U", "U'", "U2", "D", "D'", "D2"};
 
-	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
-
 	// DFS stack for iterative deepening search, plus a visited set to avoid revisiting states within the current depth pass.
 	std::stack<DFSEntry> states;
 	std::unordered_set<std::pair<long,long>,StateHash> visited;
@@ -395,7 +393,6 @@ public:
 
 	void reset_full() {
 		solution = {};
-		SOLVER_PHASE = 0;
 	}
 
 	void set_depth(int type, int depth) {
@@ -406,7 +403,7 @@ public:
 		}
 	}
 
-	void reset_dfs(std::vector<std::string> scramble_moves) {
+	void reset_dfs(std::vector<std::string>& scramble_moves) {
 		// Auto resets to the DR state if a solution for that has been found (AKA solution.first is not empty)
 		// Clear all stacks
 		std::stack<DFSEntry> empty_states;
@@ -421,22 +418,24 @@ public:
 	}
 
 	void dfs(std::vector<std::string> scramble) {
+		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
+        phase_1_dfs(scramble, dfs_nodes);
+        phase_2_dfs(scramble, dfs_nodes);
+	}
+
+    void phase_1_dfs(std::vector<std::string>& scramble, std::vector<std::unique_ptr<DFSEntry>>& dfs_nodes) {
 		// Iterative deepening DFS: for each search_depth from 1 up to MAX_DEPTH, restart the search
 		// and only accept solutions found at exactly that depth or shallower. This guarantees the
 		// shortest solution is found first, without the memory cost of full BFS.
-		int MAX_DEPTH = DEPTH_PHASE_1;
-		std::vector<std::string> move_space = MOVES;
-
+        
 		// Owns the DFSEntry nodes referenced by parent pointers so they stay alive after being popped off the stack.
-		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
 
-		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
+		for (int search_depth = 1; search_depth <= DEPTH_PHASE_1; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
 			
 			// Reset dfs state
 			reset_dfs(scramble);
 
-			std::ofstream file("debug.txt");
 			while (states.size() > 0) {
 				// Get next node to visit
 
@@ -449,36 +448,24 @@ public:
 
 				states.pop();
 				
-				// Check for target state
-				int phase_complete = check_state(corners, edges);
-
-				if (phase_complete == 2) {
-					// Solved state has been found: stitch together the DFS path with the precomputed phase 3 tail.
-					solution.second = combine(dfs_state, solution_paths[std::make_pair(corners, edges)]);
-					return;
-				}
-
-				// Domino reduced state has been found for the first time
-				if (phase_complete == 1 and SOLVER_PHASE == 0) {
+				// Check if domino reduced state has been found
+				int phase_complete = check_state_phase_1(corners, edges);
+				if (phase_complete == 1) {
 					// Switch from phase 1 (full move set, finding domino reduction) to phase 2
 					// (domino move set only, searching toward a solved or near-solved state).
-					SOLVER_PHASE++;
-					move_space = DOMINO_MOVES;
-					search_depth = 1;
-					MAX_DEPTH = DEPTH_PHASE_2;
 
 					// Save moves to get to that state
 					solution.first = get_moves(&dfs_state);
 
 					// Clear all stacks and restart the search fresh from this new starting state.
-				        std::stack<DFSEntry> empty_states;
-				        std::swap(states, empty_states);
+                    std::stack<DFSEntry> empty_states;
+                    std::swap(states, empty_states);
 
 					visited.clear();
 					visited.insert(std::make_pair(corners, edges));
 
-				        states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
-					continue;
+                    states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
+					return;
 				}
 
 				// Based on the orientation of the corners and edges
@@ -486,7 +473,7 @@ public:
 				// Works for both Phase 1 & 2
 				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
 				// Search child nodes
-				for (std::string move : move_space) {
+				for (std::string move : MOVES) {
 					// If it takes more moves than are left in the search to solve, don't bother searching
 					// (branch and bound using the precomputed orientation heuristic).
 					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
@@ -514,9 +501,74 @@ public:
 				}
 			}
 		}
-	}
+    }
 
-	int check_state(long corners, long edges) {
+    void phase_2_dfs(std::vector<std::string>& scramble, std::vector<std::unique_ptr<DFSEntry>>& dfs_nodes) {
+		// Iterative deepening DFS: for each search_depth from 1 up to MAX_DEPTH, restart the search
+		// and only accept solutions found at exactly that depth or shallower. This guarantees the
+		// shortest solution is found first, without the memory cost of full BFS.
+		for (int search_depth = 1; search_depth <= DEPTH_PHASE_2; search_depth++) {
+			std::cout << "Searching Depth: " << search_depth << "\n";
+			
+			// Reset dfs state
+			reset_dfs(scramble);
+
+			while (states.size() > 0) {
+				// Get next node to visit
+
+		 		DFSEntry dfs_state(states.top());
+
+				int depth = dfs_state.depth;
+				std::string move = dfs_state.move;
+				long corners = dfs_state.corners;
+				long edges = dfs_state.edges;
+
+				states.pop();
+				
+				// Check for target state
+				int phase_complete = check_state_phase_2(corners, edges);
+
+				if (phase_complete == 2) {
+					// Solved state has been found: stitch together the DFS path with the precomputed phase 3 tail.
+					solution.second = combine(dfs_state, solution_paths[std::make_pair(corners, edges)]);
+					return;
+				}
+
+				// Based on the orientation of the corners and edges
+				// Finds the minimum moves needed to solve the case
+				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
+				// Search child nodes
+				for (std::string move : DOMINO_MOVES) {
+					// If it takes more moves than are left in the search to solve, don't bother searching
+					// (branch and bound using the precomputed orientation heuristic).
+					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
+						break;
+					}
+
+					// Avoid moving the same side twice in a row
+					if (depth > 0 && banned_next_moves[dfs_state.move[0]].count(move[0])) {
+						continue;
+					}
+					if (depth < search_depth) {
+						std::pair<long,long> state = cube.move(move, corners, edges);
+							
+						// Store if we haven't been in the state before
+						if (!visited.count(state)) {
+							visited.insert(state);
+							// Keep the parent node alive via dfs_nodes so the parent pointer chain remains valid.
+							std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
+							DFSEntry* parent_ptr = parent.get();
+							dfs_nodes.push_back(std::move(parent));
+							DFSEntry next_state_moves = DFSEntry{std::move(parent_ptr), state.first, state.second, move, depth + 1};
+							states.push(next_state_moves);
+						}
+					}
+				}
+			}
+		}
+    }
+
+	int check_state_phase_1(long corners, long edges) {
 		// Checks if the current goal has been reached in the given position
 		// Goal is determined by SOLVER_PHASE
 		// Returns 2 if fully solved (present in the phase 3 lookup table),
@@ -535,26 +587,44 @@ public:
 			return 2;
 		}
 
-		if (SOLVER_PHASE == 0) {
-			// Domino reduction requires: all corners oriented correctly...
-			for (int i = 0; i < num_corners; i++) {
-				if (corners & (ZERO_CORI_MASK << i * 5)) {
-					return 0;
-				}
-			} 
+        // Domino reduction requires: all corners oriented correctly...
+        for (int i = 0; i < num_corners; i++) {
+            if (corners & (ZERO_CORI_MASK << i * 5)) {
+                return 0;
+            }
+        } 
 
-			// ...all edges oriented correctly, and middle layer edges kept in the middle layer.
-			for (int i = 0; i < num_edges; i++) {
-				if (edges & (ZERO_EORI_MASK << i * 5)) {
-					return 0;
-				}
-				// If a non middle layer edge is in a middle layer edge position
-				if (mid_layer_edges.count(i) && !mid_layer_edges.count((edges & (ZERO_EPOS_MASK << i * 5)) >> i * 5)) {
-					return 0;
-				}
-			} 
+        // ...all edges oriented correctly, and middle layer edges kept in the middle layer.
+        for (int i = 0; i < num_edges; i++) {
+            if (edges & (ZERO_EORI_MASK << i * 5)) {
+                return 0;
+            }
+            // If a non middle layer edge is in a middle layer edge position
+            if (mid_layer_edges.count(i) && !mid_layer_edges.count((edges & (ZERO_EPOS_MASK << i * 5)) >> i * 5)) {
+                return 0;
+            }
+        } 
 
-			return 1;
+        return 1;
+	}
+
+	int check_state_phase_2(long corners, long edges) {
+		// Checks if the current goal has been reached in the given position
+		// Goal is determined by SOLVER_PHASE
+		// Returns 2 if fully solved (present in the phase 3 lookup table),
+		// 1 if domino reduced (phase 1 goal met), 0 otherwise.
+
+		std::pair<long,long> cube_state = cube.get_solved_state();
+		long CORNERS_SOLVED = cube_state.first;
+		long EDGES_SOLVED = cube_state.second;
+
+		std::unordered_set<int> mid_layer_edges = {4, 5, 6, 7};
+
+		int num_corners = 8;
+		int num_edges = 12;
+
+		if (solution_paths.count(std::make_pair(corners, edges))) {
+			return 2;
 		}
 
 		return 0;
@@ -694,6 +764,11 @@ void benchmark_solves() {
 int main(int argc, char** argv) {
 	// benchmark_solves();
 	std::vector<std::string> scramble = {"U", "R2", "F", "B", "R", "B2", "R", "U2", "L", "B2", "R", "U'", "D'", "R2", "F", "R'", "L", "B2", "U2", "F2"};
+    std::cout << "Scramble: ";
+    for (std::string s : scramble) {
+        std::cout << s << ", ";
+    }
+    std::cout << std::endl;
 
 	solve(scramble);
 
