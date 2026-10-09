@@ -18,6 +18,9 @@
 #include <algorithm>
 
 #include <random>
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
 
 class Cube {
 private:
@@ -348,6 +351,76 @@ public:
 	}
 };
 
+// Lossy visited-state cache: a fixed-size, direct-mapped table (2-way buckets) of 64-bit state keys.
+// A state counts as visited only if its full 64-bit key is stored, so a smaller table never wrongly prunes;
+// it just forgets old states (which can then be searched twice). Slots are relaxed atomics so the same
+// table can be shared by OpenMP threads with no lock. The pass salt is folded into every key, so starting a
+// new depth pass invalidates old entries without clearing the table.
+class VisitedCache {
+private:
+	std::unique_ptr<std::atomic<uint64_t>[]> slots;
+	uint64_t mask = 0;
+	uint64_t salt = 0;
+	uint64_t pass = 0;
+	bool enabled = false;
+
+	static uint64_t mix64(uint64_t x) {
+		// splitmix64 finalizer, spreads every input bit across the output
+		x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
+		x ^= x >> 27; x *= 0x94d049bb133111ebULL;
+		x ^= x >> 31;
+		return x;
+	}
+
+public:
+	// log2 of the slot count (8 bytes each). 0 disables the visited check entirely.
+	static int bits_from_env(int fallback = 21) {
+		const char* e = std::getenv("VISITED_BITS");
+		return e ? std::atoi(e) : fallback;
+	}
+
+	explicit VisitedCache(int bits) {
+		if (bits < 1) {
+			return;
+		}
+		enabled = true;
+		size_t n = (size_t)1 << bits;
+		mask = n - 1;
+		slots.reset(new std::atomic<uint64_t>[n]);
+		for (size_t i = 0; i < n; i++) {
+			slots[i].store(0, std::memory_order_relaxed);
+		}
+	}
+
+	// Starts a new depth pass: entries from earlier passes stop matching.
+	void new_pass() {
+		salt = mix64(++pass);
+	}
+
+	// Returns true if the state was already seen this pass, otherwise records it and returns false.
+	bool seen_before(long corners, long edges) {
+		if (!enabled) {
+			return false;
+		}
+		uint64_t key = (mix64((uint64_t)corners) ^ (mix64((uint64_t)edges) + 0x9e3779b97f4a7c15ULL)) ^ salt;
+		if (key == 0) {
+			key = 1;                      // 0 marks an empty slot
+		}
+		size_t i = key & mask;
+		std::atomic<uint64_t>& a = slots[i];
+		std::atomic<uint64_t>& b = slots[i ^ 1];   // same cache line as a
+		uint64_t va = a.load(std::memory_order_relaxed);
+		uint64_t vb = b.load(std::memory_order_relaxed);
+		if (va == key || vb == key) {
+			return true;
+		}
+		// Not found: fill an empty slot if there is one, otherwise evict one of the two.
+		std::atomic<uint64_t>& target = (va == 0) ? a : (vb == 0) ? b : ((key >> 63) ? a : b);
+		target.store(key, std::memory_order_relaxed);
+		return false;
+	}
+};
+
 class Solver {
 private:
 	// Valid Moves after 
@@ -358,7 +431,7 @@ private:
 
 	// DFS stack for iterative deepening search, plus a visited set to avoid revisiting states within the current depth pass.
 	std::stack<DFSEntry> states;
-	std::unordered_set<std::pair<long,long>,StateHash> visited;
+	VisitedCache visited{VisitedCache::bits_from_env()};
 
 	// Precomputed table (from Cube::generate_solution_lookup) used to instantly solve the last few moves once reached.
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
@@ -414,8 +487,8 @@ public:
 
 		std::pair<long,long> state = cube.to_phase(scramble_moves, solution.first);
 
-		visited.clear();
-        visited.insert(state);
+		visited.new_pass();
+		visited.seen_before(state.first, state.second);
 
 		states.push(DFSEntry{nullptr, state.first, state.second, "", 0});
 	}
@@ -474,8 +547,8 @@ public:
 				        std::stack<DFSEntry> empty_states;
 				        std::swap(states, empty_states);
 
-					visited.clear();
-					visited.insert(std::make_pair(corners, edges));
+					visited.new_pass();
+					visited.seen_before(corners, edges);
 
 				        states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
 					continue;
@@ -501,8 +574,7 @@ public:
 						std::pair<long,long> state = cube.move(move, corners, edges);
 							
 						// Store if we haven't been in the state before
-						if (!visited.count(state)) {
-							visited.insert(state);
+						if (!visited.seen_before(state.first, state.second)) {
 							// Keep the parent node alive via dfs_nodes so the parent pointer chain remains valid.
 							std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
 							DFSEntry* parent_ptr = parent.get();
