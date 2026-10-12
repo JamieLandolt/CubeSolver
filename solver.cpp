@@ -947,6 +947,7 @@ int main(int argc, char** argv) {
 #endif
 
 	// Only rank 0 prints.
+	std::streambuf* cout_buf = std::cout.rdbuf();
 	std::ofstream devnull;
 	if (g_rank != 0) {
 		devnull.open("/dev/null");
@@ -960,6 +961,9 @@ int main(int argc, char** argv) {
 		std::cout << "Scramble: " << join_moves(scramble) << std::endl;
 		solve(scramble);
 	}
+
+	// devnull is destroyed when main returns, so cout must stop pointing at it first.
+	std::cout.rdbuf(cout_buf);
 
 #ifdef USE_MPI
 	MPI_Finalize();
