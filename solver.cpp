@@ -18,6 +18,14 @@
 #include <algorithm>
 
 #include <random>
+#include <atomic>
+#include <cstdlib>
+
+#ifdef _OPENMP
+#include <omp.h>
+#else
+inline int omp_get_thread_num() { return 0; }
+#endif
 
 class Cube {
 private:
@@ -356,8 +364,10 @@ private:
 
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
-	// DFS stack for iterative deepening search.
-	std::stack<DFSEntry> states;
+	// DFSEntry nodes are linked through parent pointers, so something has to own them. Each thread owns its own pool
+	// (no locking), and seed_pool owns the nodes created while seeding. All pools are cleared at the start of a pass.
+	std::vector<std::vector<std::unique_ptr<DFSEntry>>> pools;
+	std::vector<std::unique_ptr<DFSEntry>> seed_pool;
 
 	// Precomputed table (from Cube::generate_solution_lookup) used to instantly solve the last few moves once reached.
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
@@ -380,7 +390,19 @@ public:
 	int DEPTH_PHASE_1 = 12;
 	int DEPTH_PHASE_2 = 12;
 
+	// Worker threads (env THREADS, default 8) and how many plies the root is expanded serially into start nodes
+	// before the threads split them up (env SEED_DEPTH, default 3).
+	int NUM_THREADS = 8;
+	int SEED_DEPTH = 3;
+
 	Solver(Cube& external_cube) : cube(external_cube) {
+		if (const char* e = std::getenv("THREADS")) {
+			NUM_THREADS = std::max(1, std::atoi(e));
+		}
+		if (const char* e = std::getenv("SEED_DEPTH")) {
+			SEED_DEPTH = std::max(1, std::atoi(e));
+		}
+		pools.resize(NUM_THREADS);
 		// Precompute the two lookup tables once per solver instance; both are reused across many solves.
 		solution_paths = cube.generate_solution_lookup(8);
 		orientations = cube.generate_orientations();
@@ -405,103 +427,156 @@ public:
 		}
 	}
 
-	void reset_dfs(std::vector<std::string> scramble_moves) {
-		// Auto resets to the DR state if a solution for that has been found (AKA solution.first is not empty)
-		// Clear all stacks
-		std::stack<DFSEntry> empty_states;
-		std::swap(states, empty_states);
-
-		std::pair<long,long> state = cube.to_phase(scramble_moves, solution.first);
-
-		states.push(DFSEntry{nullptr, state.first, state.second, "", 0});
-	}
-
 	void dfs(std::vector<std::string> scramble) {
-		// Iterative deepening DFS: for each search_depth from 1 up to MAX_DEPTH, restart the search
-		// and only accept solutions found at exactly that depth or shallower. This guarantees the
-		// shortest solution is found first, without the memory cost of full BFS.
+		// Iterative deepening DFS: for each search_depth from 1 up to MAX_DEPTH, search the whole tree to that depth.
+		// Every pass finishes before the next one starts, so the first solution found is a shortest one.
+		// Phase 1 uses the full move set to reach a domino reduced state, then phase 2 restarts from that state
+		// with the domino move set and searches for a state in the phase 3 lookup table.
 		int MAX_DEPTH = DEPTH_PHASE_1;
-		std::vector<std::string> move_space = MOVES;
-
-		// Owns the DFSEntry nodes referenced by parent pointers so they stay alive after being popped off the stack.
-		std::vector<std::unique_ptr<DFSEntry>> dfs_nodes;
+		const std::vector<std::string>* move_space = &MOVES;
 
 		for (int search_depth = 1; search_depth <= MAX_DEPTH; search_depth++) {
 			std::cout << "Searching Depth: " << search_depth << "\n";
-			
-			// Reset dfs state
-			reset_dfs(scramble);
 
-			std::ofstream file("debug.txt");
-			while (states.size() > 0) {
-				// Get next node to visit
+			// Root of this phase: the scrambled cube, plus the phase 1 moves once those are known.
+			std::pair<long,long> root = cube.to_phase(scramble, solution.first);
 
-		 		DFSEntry dfs_state(states.top());
+			DFSEntry found_node{nullptr, 0, 0, "", 0};
+			int phase_complete = search_pass(root, *move_space, search_depth, found_node);
+			if (phase_complete == 0) {
+				continue;
+			}
 
-				int depth = dfs_state.depth;
-				std::string move = dfs_state.move;
-				long corners = dfs_state.corners;
-				long edges = dfs_state.edges;
+			if (phase_complete == 2) {
+				// Solved state has been found: stitch together the DFS path with the precomputed phase 3 tail.
+				solution.second = combine(found_node, solution_paths[std::make_pair(found_node.corners, found_node.edges)]);
+				return;
+			}
 
-				states.pop();
-				
-				// Check for target state
-				int phase_complete = check_state(corners, edges);
+			// Domino reduced state has been found for the first time
+			// Switch from phase 1 (full move set, finding domino reduction) to phase 2
+			// (domino move set only, searching toward a solved or near-solved state).
+			SOLVER_PHASE++;
+			move_space = &DOMINO_MOVES;
+			MAX_DEPTH = DEPTH_PHASE_2;
 
-				if (phase_complete == 2) {
-					// Solved state has been found: stitch together the DFS path with the precomputed phase 3 tail.
-					solution.second = combine(dfs_state, solution_paths[std::make_pair(corners, edges)]);
-					return;
+			// Save moves to get to that state (must happen before the next pass clears the node pools)
+			solution.first = get_moves(&found_node);
+
+			// The loop's ++ makes the next pass depth 1 of phase 2.
+			search_depth = 0;
+		}
+	}
+
+	int search_pass(std::pair<long,long> root, const std::vector<std::string>& moves, int search_depth, DFSEntry& found_node) {
+		// One depth limited pass. Returns check_state() of the first goal state found (writing it to found_node), or 0.
+		//
+		// The first SEED_DEPTH plies are expanded serially into a list of start nodes. The threads then take start
+		// nodes one at a time (dynamic schedule, since subtree sizes vary wildly) and run an independent DFS on each
+		// with their own stack and node pool, so nothing is shared during the search except the found flag.
+		seed_pool.clear();
+		for (auto& pool : pools) {
+			pool.clear();
+		}
+
+		std::vector<DFSEntry> frontier;
+		frontier.push_back(DFSEntry{nullptr, root.first, root.second, "", 0});
+
+		int goal = check_state(root.first, root.second);
+		if (goal) {
+			found_node = frontier[0];
+			return goal;
+		}
+
+		int seed_levels = std::min(SEED_DEPTH, search_depth);
+		for (int level = 0; level < seed_levels && !frontier.empty(); level++) {
+			std::vector<DFSEntry> next;
+			for (const DFSEntry& node : frontier) {
+				children(node, moves, search_depth, seed_pool, next);
+			}
+			for (const DFSEntry& node : next) {
+				goal = check_state(node.corners, node.edges);
+				if (goal) {
+					found_node = node;
+					return goal;
 				}
+			}
+			frontier = std::move(next);
+		}
 
-				// Domino reduced state has been found for the first time
-				if (phase_complete == 1 and SOLVER_PHASE == 0) {
-					// Switch from phase 1 (full move set, finding domino reduction) to phase 2
-					// (domino move set only, searching toward a solved or near-solved state).
-					SOLVER_PHASE++;
-					move_space = DOMINO_MOVES;
-					search_depth = 1;
-					MAX_DEPTH = DEPTH_PHASE_2;
+		std::atomic<bool> found{false};
+		int result = 0;
 
-					// Save moves to get to that state
-					solution.first = get_moves(&dfs_state);
+		#pragma omp parallel num_threads(NUM_THREADS)
+		{
+			std::vector<std::unique_ptr<DFSEntry>>& pool = pools[omp_get_thread_num()];
+			std::vector<DFSEntry> stack;
 
-					// Clear all stacks and restart the search fresh from this new starting state.
-				        std::stack<DFSEntry> empty_states;
-				        std::swap(states, empty_states);
-
-				        states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
+			#pragma omp for schedule(dynamic, 1)
+			for (long i = 0; i < (long)frontier.size(); i++) {
+				if (found.load(std::memory_order_relaxed)) {
 					continue;
 				}
 
-				// Based on the orientation of the corners and edges
-				// Finds the minimum moves needed to solve the case
-				// Works for both Phase 1 & 2
-				std::pair<int,int> min_sol_moves = cube.ori_to_int(corners, edges);
-				// Search child nodes
-				for (std::string move : move_space) {
-					// If it takes more moves than are left in the search to solve, don't bother searching
-					// (branch and bound using the precomputed orientation heuristic).
-					if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - depth) {
+				stack.clear();
+				stack.push_back(frontier[i]);
+				while (!stack.empty() && !found.load(std::memory_order_relaxed)) {
+					DFSEntry node = std::move(stack.back());
+					stack.pop_back();
+
+					int phase_complete = check_state(node.corners, node.edges);
+					if (phase_complete) {
+						#pragma omp critical(found_node)
+						{
+							// Every solution in this pass has the same length, so whichever thread gets here first wins.
+							if (!found.load()) {
+								found_node = node;
+								result = phase_complete;
+								found.store(true);
+							}
+						}
 						break;
 					}
 
-					// Avoid moving the same side twice in a row
-					if (depth > 0 && banned_next_moves[dfs_state.move[0]].count(move[0])) {
-						continue;
-					}
-					if (depth < search_depth) {
-						std::pair<long,long> state = cube.move(move, corners, edges);
-
-						// Keep the parent node alive via dfs_nodes so the parent pointer chain remains valid.
-						std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
-						DFSEntry* parent_ptr = parent.get();
-						dfs_nodes.push_back(std::move(parent));
-						DFSEntry next_state_moves = DFSEntry{std::move(parent_ptr), state.first, state.second, move, depth + 1};
-						states.push(next_state_moves);
-					}
+					children(node, moves, search_depth, pool, stack);
 				}
 			}
+		}
+
+		return result;
+	}
+
+	void children(const DFSEntry& node, const std::vector<std::string>& moves, int search_depth,
+				  std::vector<std::unique_ptr<DFSEntry>>& pool, std::vector<DFSEntry>& out) {
+		// Appends every child of node that is worth searching to out.
+		if (node.depth >= search_depth) {
+			return;
+		}
+
+		// If it takes more moves than are left in the search to solve, don't bother searching
+		// (branch and bound using the precomputed orientation heuristic).
+		std::pair<int,int> min_sol_moves = cube.ori_to_int(node.corners, node.edges);
+		if (std::max(corner_orientations[min_sol_moves.first], edge_orientations[min_sol_moves.second]) > search_depth - node.depth) {
+			return;
+		}
+
+		// One heap copy of the parent per expanded node, kept alive in pool so the parent pointer chain stays valid.
+		DFSEntry* parent = nullptr;
+
+		for (const std::string& m : moves) {
+			// Avoid moving the same side twice in a row
+			if (node.depth > 0 && banned_next_moves.at(node.move[0]).count(m[0])) {
+				continue;
+			}
+
+			std::string mv = m;
+			std::pair<long,long> state = cube.move(mv, node.corners, node.edges);
+
+			if (!parent) {
+				pool.push_back(std::make_unique<DFSEntry>(node));
+				parent = pool.back().get();
+			}
+			out.push_back(DFSEntry{parent, state.first, state.second, m, node.depth + 1});
 		}
 	}
 
@@ -635,7 +710,6 @@ void benchmark_solves() {
 		std::cout << scramble[i] << "\n";
 
 		solver.reset_full();
-		solver.reset_dfs(scramble);
 
 		// Time Solve
 		timer.start();
