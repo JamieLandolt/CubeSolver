@@ -356,9 +356,8 @@ private:
 
 	int SOLVER_PHASE = 0; // 0 -> Performing Domino Reduction. 1 -> Solving the cube with reduced move space.
 
-	// DFS stack for iterative deepening search, plus a visited set to avoid revisiting states within the current depth pass.
+	// DFS stack for iterative deepening search.
 	std::stack<DFSEntry> states;
-	std::unordered_set<std::pair<long,long>,StateHash> visited;
 
 	// Precomputed table (from Cube::generate_solution_lookup) used to instantly solve the last few moves once reached.
 	std::unordered_map<std::pair<long,long>,PathEntry,StateHash> solution_paths;
@@ -413,9 +412,6 @@ public:
 		std::swap(states, empty_states);
 
 		std::pair<long,long> state = cube.to_phase(scramble_moves, solution.first);
-
-		visited.clear();
-        visited.insert(state);
 
 		states.push(DFSEntry{nullptr, state.first, state.second, "", 0});
 	}
@@ -474,9 +470,6 @@ public:
 				        std::stack<DFSEntry> empty_states;
 				        std::swap(states, empty_states);
 
-					visited.clear();
-					visited.insert(std::make_pair(corners, edges));
-
 				        states.push(DFSEntry{&dfs_state, corners, edges, "", 0});
 					continue;
 				}
@@ -499,17 +492,13 @@ public:
 					}
 					if (depth < search_depth) {
 						std::pair<long,long> state = cube.move(move, corners, edges);
-							
-						// Store if we haven't been in the state before
-						if (!visited.count(state)) {
-							visited.insert(state);
-							// Keep the parent node alive via dfs_nodes so the parent pointer chain remains valid.
-							std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
-							DFSEntry* parent_ptr = parent.get();
-							dfs_nodes.push_back(std::move(parent));
-							DFSEntry next_state_moves = DFSEntry{std::move(parent_ptr), state.first, state.second, move, depth + 1};
-							states.push(next_state_moves);
-						}
+
+						// Keep the parent node alive via dfs_nodes so the parent pointer chain remains valid.
+						std::unique_ptr<DFSEntry> parent = std::make_unique<DFSEntry>(dfs_state);
+						DFSEntry* parent_ptr = parent.get();
+						dfs_nodes.push_back(std::move(parent));
+						DFSEntry next_state_moves = DFSEntry{std::move(parent_ptr), state.first, state.second, move, depth + 1};
+						states.push(next_state_moves);
 					}
 				}
 			}
