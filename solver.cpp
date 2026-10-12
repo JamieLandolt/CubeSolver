@@ -20,11 +20,51 @@
 #include <random>
 #include <atomic>
 #include <cstdlib>
+#include <climits>
+#include <unistd.h>
+#include <sstream>
+
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
 
 #ifdef _OPENMP
 #include <omp.h>
 #else
 inline int omp_get_thread_num() { return 0; }
+#endif
+
+// MPI rank/size (1 rank and rank 0 when built without MPI). Only rank 0 prints and times.
+static int g_rank = 0;
+static int g_size = 1;
+
+static std::string join_moves(const std::vector<std::string>& moves) {
+	std::string s;
+	for (const std::string& m : moves) {
+		s += (s.empty() ? "" : " ") + m;
+	}
+	return s;
+}
+
+static std::vector<std::string> split_moves(const std::string& s) {
+	std::vector<std::string> moves;
+	std::istringstream in(s);
+	std::string m;
+	while (in >> m) {
+		moves.push_back(m);
+	}
+	return moves;
+}
+
+#ifdef USE_MPI
+static void bcast_string(std::string& s, int root) {
+	int len = (int)s.size();
+	MPI_Bcast(&len, 1, MPI_INT, root, MPI_COMM_WORLD);
+	s.resize(len);
+	if (len > 0) {
+		MPI_Bcast(&s[0], len, MPI_CHAR, root, MPI_COMM_WORLD);
+	}
+}
 #endif
 
 class Cube {
@@ -441,15 +481,19 @@ public:
 			// Root of this phase: the scrambled cube, plus the phase 1 moves once those are known.
 			std::pair<long,long> root = cube.to_phase(scramble, solution.first);
 
-			DFSEntry found_node{nullptr, 0, 0, "", 0};
-			int phase_complete = search_pass(root, *move_space, search_depth, found_node);
+			std::list<std::string> path;
+			long found_corners = 0;
+			long found_edges = 0;
+			int phase_complete = search_pass(root, *move_space, search_depth, path, found_corners, found_edges);
 			if (phase_complete == 0) {
 				continue;
 			}
 
 			if (phase_complete == 2) {
 				// Solved state has been found: stitch together the DFS path with the precomputed phase 3 tail.
-				solution.second = combine(found_node, solution_paths[std::make_pair(found_node.corners, found_node.edges)]);
+				std::list<std::string> tail = get_moves(solution_paths[std::make_pair(found_corners, found_edges)]);
+				path.splice(path.end(), tail);
+				solution.second = path;
 				return;
 			}
 
@@ -460,31 +504,41 @@ public:
 			move_space = &DOMINO_MOVES;
 			MAX_DEPTH = DEPTH_PHASE_2;
 
-			// Save moves to get to that state (must happen before the next pass clears the node pools)
-			solution.first = get_moves(&found_node);
+			// Save moves to get to that state
+			solution.first = path;
 
 			// The loop's ++ makes the next pass depth 1 of phase 2.
 			search_depth = 0;
 		}
 	}
 
-	int search_pass(std::pair<long,long> root, const std::vector<std::string>& moves, int search_depth, DFSEntry& found_node) {
-		// One depth limited pass. Returns check_state() of the first goal state found (writing it to found_node), or 0.
+	int search_pass(std::pair<long,long> root, const std::vector<std::string>& moves, int search_depth,
+					std::list<std::string>& path, long& found_corners, long& found_edges) {
+		// One depth limited pass. Returns check_state() of the first goal state found, or 0. On success path holds the
+		// moves from the root to that state and found_corners/found_edges its state. Same result on every MPI rank.
 		//
-		// The first SEED_DEPTH plies are expanded serially into a list of start nodes. The threads then take start
-		// nodes one at a time (dynamic schedule, since subtree sizes vary wildly) and run an independent DFS on each
-		// with their own stack and node pool, so nothing is shared during the search except the found flag.
+		// The first SEED_DEPTH plies are expanded serially into a list of start nodes (identical on every rank, so no
+		// communication). Rank r takes start nodes r, r+size, ... and its threads pull them one at a time from an atomic
+		// counter, each running an independent DFS with its own stack and node pool. With several ranks, one extra
+		// thread per rank only does MPI: it polls a non-blocking all-reduce of "someone found a solution" and
+		// "some rank still has work", so ranks stop together without any other synchronisation.
 		seed_pool.clear();
 		for (auto& pool : pools) {
 			pool.clear();
 		}
+
+		auto record = [&](const DFSEntry& node) {
+			path = get_moves(const_cast<DFSEntry*>(&node));
+			found_corners = node.corners;
+			found_edges = node.edges;
+		};
 
 		std::vector<DFSEntry> frontier;
 		frontier.push_back(DFSEntry{nullptr, root.first, root.second, "", 0});
 
 		int goal = check_state(root.first, root.second);
 		if (goal) {
-			found_node = frontier[0];
+			record(frontier[0]);
 			return goal;
 		}
 
@@ -497,52 +551,134 @@ public:
 			for (const DFSEntry& node : next) {
 				goal = check_state(node.corners, node.edges);
 				if (goal) {
-					found_node = node;
+					record(node);
 					return goal;
 				}
 			}
 			frontier = std::move(next);
 		}
 
-		std::atomic<bool> found{false};
+		std::vector<DFSEntry> mine;
+		for (size_t i = g_rank; i < frontier.size(); i += g_size) {
+			mine.push_back(frontier[i]);
+		}
+
+		std::atomic<long> next_start{0};
+		std::atomic<int> workers_done{0};
+		std::atomic<bool> found_local{false};
+		std::atomic<bool> remote_stop{false};
 		int result = 0;
+		DFSEntry found_node{nullptr, 0, 0, "", 0};
 
-		#pragma omp parallel num_threads(NUM_THREADS)
+		const bool comm_thread = g_size > 1;
+
+		#pragma omp parallel num_threads(NUM_THREADS + (comm_thread ? 1 : 0))
 		{
-			std::vector<std::unique_ptr<DFSEntry>>& pool = pools[omp_get_thread_num()];
-			std::vector<DFSEntry> stack;
+			int tid = omp_get_thread_num();
 
-			#pragma omp for schedule(dynamic, 1)
-			for (long i = 0; i < (long)frontier.size(); i++) {
-				if (found.load(std::memory_order_relaxed)) {
-					continue;
-				}
-
-				stack.clear();
-				stack.push_back(frontier[i]);
-				while (!stack.empty() && !found.load(std::memory_order_relaxed)) {
-					DFSEntry node = std::move(stack.back());
-					stack.pop_back();
-
-					int phase_complete = check_state(node.corners, node.edges);
-					if (phase_complete) {
-						#pragma omp critical(found_node)
-						{
-							// Every solution in this pass has the same length, so whichever thread gets here first wins.
-							if (!found.load()) {
-								found_node = node;
-								result = phase_complete;
-								found.store(true);
-							}
+			if (comm_thread && tid == 0) {
+#ifdef USE_MPI
+				// MPI thread (the master thread, which is the only one allowed to call MPI under MPI_THREAD_FUNNELED).
+				int nworkers = omp_get_num_threads() - 1;
+				while (true) {
+					int local[2] = {found_local.load() ? 1 : 0, workers_done.load() < nworkers ? 1 : 0};
+					int global[2] = {0, 0};
+					MPI_Request req;
+					MPI_Iallreduce(local, global, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD, &req);
+					int done = 0;
+					while (!done) {
+						MPI_Test(&req, &done, MPI_STATUS_IGNORE);
+						if (!done) {
+							usleep(50);
 						}
+					}
+					if (global[0] > 0) {
+						remote_stop.store(true);   // some rank found a solution
+						break;
+					}
+					if (global[1] == 0) {
+						break;                      // every rank has finished its share and nobody found one
+					}
+					usleep(500);
+				}
+#endif
+			} else {
+				std::vector<std::unique_ptr<DFSEntry>>& pool = pools[comm_thread ? tid - 1 : tid];
+				std::vector<DFSEntry> stack;
+
+				while (true) {
+					long i = next_start.fetch_add(1);
+					if (i >= (long)mine.size()) {
 						break;
 					}
 
-					children(node, moves, search_depth, pool, stack);
+					stack.clear();
+					stack.push_back(mine[i]);
+					while (!stack.empty()) {
+						if (found_local.load(std::memory_order_relaxed) || remote_stop.load(std::memory_order_relaxed)) {
+							break;
+						}
+
+						DFSEntry node = std::move(stack.back());
+						stack.pop_back();
+
+						int phase_complete = check_state(node.corners, node.edges);
+						if (phase_complete) {
+							#pragma omp critical(found_node)
+							{
+								// Every solution in this pass has the same length, so whichever thread gets here first wins.
+								if (!found_local.load()) {
+									found_node = node;
+									result = phase_complete;
+									found_local.store(true);
+								}
+							}
+							break;
+						}
+
+						children(node, moves, search_depth, pool, stack);
+					}
+
+					if (found_local.load(std::memory_order_relaxed) || remote_stop.load(std::memory_order_relaxed)) {
+						break;
+					}
 				}
+				workers_done.fetch_add(1);
 			}
 		}
 
+#ifdef USE_MPI
+		if (comm_thread) {
+			// Agree on one winner (lowest rank that found a solution) and broadcast its result to every rank.
+			int mine_found = result != 0 ? g_rank : INT_MAX;
+			int winner = INT_MAX;
+			MPI_Allreduce(&mine_found, &winner, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+			if (winner == INT_MAX) {
+				return 0;
+			}
+
+			int res = result;
+			long state[2] = {found_node.corners, found_node.edges};
+			std::string moves_str;
+			if (g_rank == winner) {
+				std::list<std::string> p = get_moves(&found_node);
+				moves_str = join_moves(std::vector<std::string>(p.begin(), p.end()));
+			}
+			MPI_Bcast(&res, 1, MPI_INT, winner, MPI_COMM_WORLD);
+			MPI_Bcast(state, 2, MPI_LONG, winner, MPI_COMM_WORLD);
+			bcast_string(moves_str, winner);
+
+			std::vector<std::string> v = split_moves(moves_str);
+			path = std::list<std::string>(v.begin(), v.end());
+			found_corners = state[0];
+			found_edges = state[1];
+			return res;
+		}
+#endif
+
+		if (result) {
+			record(found_node);
+		}
 		return result;
 	}
 
@@ -686,7 +822,7 @@ void solve(std::vector<std::string> scramble) {
 	}
 }
 
-void benchmark_solves() {
+void benchmark_solves(int n_solves) {
 	// Runs many random scrambles through the solver and reports timing stats (min/avg/median/max/total).
     Cube cube;
 	Solver solver = Solver(cube);
@@ -695,12 +831,27 @@ void benchmark_solves() {
     std::vector<long> times;
 
 	int scramble_size = 25;
-	for (int scramble_num = 0; scramble_num < 80; scramble_num++) {
+	long hardest_time = -1;
+	int verified = 0;
+	int failed = 0;
+	std::string hardest_scramble;
+	std::string hardest_solution;
+	int hardest_num = -1;
+	for (int scramble_num = 0; scramble_num < n_solves; scramble_num++) {
 		std::cout << "Scramble " << scramble_num << ":\n";
 
 		std::pair<std::vector<std::string>,std::pair<long,long>> p = cube.random_scramble(scramble_size, solver.DEPTH_PHASE_1);
 		std::vector<std::string> scramble = p.first;
 		std::pair<long,long> state = p.second;
+
+#ifdef USE_MPI
+		// Every rank must solve the same scramble: rank 0's wins.
+		if (g_size > 1) {
+			std::string sstr = g_rank == 0 ? join_moves(scramble) : "";
+			bcast_string(sstr, 0);
+			scramble = split_moves(sstr);
+		}
+#endif
 
 		int i;
 		std::cout << "Scramble Moves: ";
@@ -712,13 +863,42 @@ void benchmark_solves() {
 		solver.reset_full();
 
 		// Time Solve
+#ifdef USE_MPI
+		if (g_size > 1) {
+			MPI_Barrier(MPI_COMM_WORLD);
+		}
+#endif
 		timer.start();
 		solver.dfs(scramble);
 		auto solve_time = timer.stop(scramble_size);
 
+		// Replay the solution on the scrambled cube and check it ends solved.
+		{
+			std::pair<std::list<std::string>,std::list<std::string>> vs = solver.get_solution();
+			std::vector<std::string> all(vs.first.begin(), vs.first.end());
+			all.insert(all.end(), vs.second.begin(), vs.second.end());
+			std::pair<long,long> st = cube.get_solved_state();
+			st = cube.execute_moves(scramble, st.first, st.second);
+			st = cube.execute_moves(all, st.first, st.second);
+			if (!all.empty() && st == cube.get_solved_state()) {
+				verified++;
+			} else {
+				failed++;
+			}
+		}
+
 		long time = solve_time.count();
 		std::cout << "Time: " << time << "ms | ";
 		times.push_back(time);
+		if (time > hardest_time) {
+			hardest_time = time;
+			hardest_num = scramble_num;
+			hardest_scramble = join_moves(scramble);
+			std::pair<std::list<std::string>,std::list<std::string>> hs = solver.get_solution();
+			std::vector<std::string> all(hs.first.begin(), hs.first.end());
+			all.insert(all.end(), hs.second.begin(), hs.second.end());
+			hardest_solution = join_moves(all);
+		}
 
 		// If a non middle layer edge is in a middle layer edge position
 		std::pair<std::list<std::string>,std::list<std::string>> solution = solver.get_solution();
@@ -752,14 +932,38 @@ void benchmark_solves() {
 	std::cout << "Median Solve Time: " << timer.median(times) << "ms" << std::endl;
 	std::cout << "Max Solve Time: " << *std::max_element(times.begin(), times.end()) << "ms" << std::endl;
 	std::cout << "Total Time: " << std::accumulate(times.begin(), times.end(), 0) << "ms" << std::endl;
+	std::cout << "Verified solved: " << verified << "/" << (verified + failed) << std::endl;
+	std::cout << "Hardest Solve: " << hardest_time << "ms (scramble " << hardest_num << ")" << std::endl;
+	std::cout << "HARDEST_SCRAMBLE: " << hardest_scramble << std::endl;
+	std::cout << "HARDEST_SOLUTION: " << hardest_solution << std::endl;
 }
 
 int main(int argc, char** argv) {
-	// benchmark_solves();
-	std::vector<std::string> scramble = {"U", "R2", "F", "B", "R", "B2", "R", "U2", "L", "B2", "R", "U'", "D'", "R2", "F", "R'", "L", "B2", "U2", "F2"};
+#ifdef USE_MPI
+	int provided;
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+	MPI_Comm_rank(MPI_COMM_WORLD, &g_rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &g_size);
+#endif
 
-	solve(scramble);
+	// Only rank 0 prints.
+	std::ofstream devnull;
+	if (g_rank != 0) {
+		devnull.open("/dev/null");
+		std::cout.rdbuf(devnull.rdbuf());
+	}
 
+	if (const char* e = std::getenv("BENCH_SOLVES")) {
+		benchmark_solves(std::atoi(e));
+	} else {
+		std::vector<std::string> scramble = {"U", "R2", "F", "B", "R", "B2", "R", "U2", "L", "B2", "R", "U'", "D'", "R2", "F", "R'", "L", "B2", "U2", "F2"};
+		std::cout << "Scramble: " << join_moves(scramble) << std::endl;
+		solve(scramble);
+	}
+
+#ifdef USE_MPI
+	MPI_Finalize();
+#endif
 	return 0;
 }
 
